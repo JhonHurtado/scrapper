@@ -31,6 +31,7 @@ def init_db():
                 short_description TEXT,
                 address          TEXT NOT NULL DEFAULT '',
                 city             TEXT NOT NULL,
+                city_slug        TEXT,
                 department       TEXT NOT NULL,
                 country          TEXT NOT NULL DEFAULT 'Colombia',
                 latitude         REAL,

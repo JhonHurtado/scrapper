@@ -63,16 +63,17 @@ class Place:
 
 def save_place(place: Place) -> bool:
     """Guarda un lugar en DB. Retorna True si fue guardado, False si es duplicado."""
+    city_slug = slugify(place.city)
     with get_db() as conn:
         try:
             conn.execute(
                 """INSERT INTO places
                    (id, name, slug, description, short_description, address,
-                    city, department, country, latitude, longitude, main_image,
+                    city, city_slug, department, country, latitude, longitude, main_image,
                     phone, email, website, category, scraped_at, source_url)
-                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                 (place.id, place.name, place.slug, place.description,
-                 place.short_description, place.address, place.city,
+                 place.short_description, place.address, place.city, city_slug,
                  place.department, place.country, place.latitude,
                  place.longitude, place.main_image, place.phone,
                  place.email, place.website, place.category,
@@ -92,23 +93,13 @@ def get_all_places() -> list:
 
 
 def get_places_by_city(city_slug: str) -> list:
-    # Normalise the slug back to a searchable name, then compare by slug
-    # to handle accented chars (e.g. "bogota" must match "Bogotá")
+    """Retorna lugares de una ciudad por su slug (ej. 'bogota', 'medellin')."""
     with get_db() as conn:
         rows = conn.execute(
-            "SELECT * FROM places WHERE lower(city) = lower(?) ORDER BY name",
-            (city_slug.replace("-", " "),),
+            "SELECT * FROM places WHERE city_slug = ? ORDER BY name",
+            (city_slug,),
         ).fetchall()
-        if rows:
-            return [_row_to_place(r) for r in rows]
-        # Fallback: compare via slugified city column
-        all_rows = conn.execute(
-            "SELECT * FROM places ORDER BY name"
-        ).fetchall()
-        return [
-            _row_to_place(r) for r in all_rows
-            if slugify(r["city"]) == city_slug
-        ]
+        return [_row_to_place(r) for r in rows]
 
 
 def count_places() -> int:
