@@ -87,6 +87,8 @@ async def scrape_all(manager: ConnectionManager, state=None):
                     context, query, city_name, department, category, manager
                 )
                 total_errors += errors
+                if state:
+                    state.errors = total_errors
 
                 for place in places:
                     saved = save_place(place)

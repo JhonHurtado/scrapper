@@ -1,6 +1,7 @@
 # backend/main.py
 import uuid
 import logging
+from contextlib import asynccontextmanager
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -10,7 +11,14 @@ from .api.websocket import manager
 
 logging.basicConfig(level=logging.INFO)
 
-app = FastAPI(title="Colombia Tourist Scraper", version="1.0.0")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    init_db()
+    yield
+
+
+app = FastAPI(title="Colombia Tourist Scraper", version="1.0.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -22,16 +30,12 @@ app.add_middleware(
 app.include_router(router)
 
 
-@app.on_event("startup")
-async def startup():
-    init_db()
-
-
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
     await manager.connect(websocket)
     session_id = str(uuid.uuid4())
-    await manager.broadcast({"type": "connected", "session_id": session_id})
+    # Send only to the connecting client, not all connected clients
+    await websocket.send_json({"type": "connected", "session_id": session_id})
     try:
         while True:
             await websocket.receive_text()  # mantener conexión viva (ping)
