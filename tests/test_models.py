@@ -75,3 +75,18 @@ def test_city_progress_flow(tmp_db):
     pending_after = get_pending_cities()
     assert len(pending_after) == 1
     assert pending_after[0]["name"] == "Medellín"
+
+
+def test_extract_coords_from_url():
+    from backend.scraper.playwright_scraper import _extract_coords
+    url = "https://www.google.com/maps/place/Plaza/@4.5981,-74.0759,17z/data=..."
+    lat, lng = _extract_coords(url)
+    assert lat == 4.5981
+    assert lng == -74.0759
+
+
+def test_extract_coords_missing():
+    from backend.scraper.playwright_scraper import _extract_coords
+    lat, lng = _extract_coords("https://www.google.com/maps/search/bogota")
+    assert lat is None
+    assert lng is None
