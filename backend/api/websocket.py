@@ -26,7 +26,7 @@ class ConnectionManager:
             return
         data = json.dumps(message, ensure_ascii=False, default=str)
         dead = []
-        for conn in self.active_connections:
+        for conn in list(self.active_connections):
             try:
                 await conn.send_text(data)
             except Exception:
