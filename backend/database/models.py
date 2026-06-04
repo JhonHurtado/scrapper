@@ -1,12 +1,15 @@
 # backend/database/models.py
 import sqlite3
 import uuid
-from dataclasses import dataclass, asdict
+import logging
+from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Optional
+from typing import Optional, List
 
 from slugify import slugify
-from .db import get_db
+from .db import get_db, get_connection
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -49,6 +52,7 @@ class Place:
             "shortDescription": self.short_description,
             "address": self.address,
             "city": self.city,
+            "citySlug": slugify(self.city),
             "department": self.department,
             "country": self.country,
             "latitude": self.latitude,
@@ -58,6 +62,8 @@ class Place:
             "email": self.email,
             "website": self.website,
             "category": self.category,
+            "scrapedAt": self.scraped_at,
+            "sourceUrl": self.source_url,
         }
 
 
@@ -84,7 +90,7 @@ def save_place(place: Place) -> bool:
             return False
 
 
-def get_all_places() -> list:
+def get_all_places() -> List[Place]:
     with get_db() as conn:
         rows = conn.execute(
             "SELECT * FROM places ORDER BY city, name"
@@ -92,7 +98,7 @@ def get_all_places() -> list:
         return [_row_to_place(r) for r in rows]
 
 
-def get_places_by_city(city_slug: str) -> list:
+def get_places_by_city(city_slug: str) -> List[Place]:
     """Retorna lugares de una ciudad por su slug (ej. 'bogota', 'medellin')."""
     with get_db() as conn:
         rows = conn.execute(
@@ -100,6 +106,18 @@ def get_places_by_city(city_slug: str) -> list:
             (city_slug,),
         ).fetchall()
         return [_row_to_place(r) for r in rows]
+
+
+def get_places_paginated(page: int = 1, per_page: int = 50) -> tuple:
+    """Retorna (places, total_count) para paginación."""
+    offset = (page - 1) * per_page
+    with get_db() as conn:
+        total = conn.execute("SELECT COUNT(*) FROM places").fetchone()[0]
+        rows = conn.execute(
+            "SELECT * FROM places ORDER BY city, name LIMIT ? OFFSET ?",
+            (per_page, offset),
+        ).fetchall()
+    return [_row_to_place(r) for r in rows], total
 
 
 def count_places() -> int:
@@ -136,6 +154,19 @@ def get_pending_cities() -> list:
             "SELECT city_name, department FROM city_progress WHERE status='pending' ORDER BY rowid"
         ).fetchall()
         return [{"name": r["city_name"], "department": r["department"]} for r in rows]
+
+
+def get_city_progress() -> List[dict]:
+    with get_db() as conn:
+        rows = conn.execute(
+            "SELECT city_name, department, status, places_found, completed_at FROM city_progress ORDER BY city_name"
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+
+def reset_city_progress():
+    with get_db() as conn:
+        conn.execute("UPDATE city_progress SET status='pending', places_found=0, completed_at=NULL")
 
 
 def _row_to_place(row) -> Place:

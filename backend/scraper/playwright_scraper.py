@@ -4,10 +4,11 @@ import logging
 import random
 import re
 from datetime import datetime, timezone
-from typing import Optional
+from typing import Optional, List, Tuple
 
 from playwright.async_api import async_playwright, BrowserContext, Page
 
+from ..config import config
 from ..api.websocket import ConnectionManager
 from ..database.db import init_db
 from ..database.models import (
@@ -27,8 +28,25 @@ USER_AGENTS = [
 ]
 
 
+class ScrapingError(Exception):
+    pass
+
+
+async def _retry_async(coro, max_retries: int = 3, delay: float = 5.0):
+    last_error = None
+    for attempt in range(max_retries):
+        try:
+            return await coro()
+        except Exception as e:
+            last_error = e
+            if attempt < max_retries - 1:
+                logger.warning(f"Attempt {attempt + 1} failed: {e}. Retrying in {delay}s...")
+                await asyncio.sleep(delay)
+                delay *= 1.5
+    raise last_error
+
+
 async def scrape_all(manager: ConnectionManager, state=None):
-    """Entry point principal. Scrapea todas las ciudades pendientes."""
     init_db()
     init_city_progress(CITIES)
     pending = get_pending_cities()
@@ -40,7 +58,7 @@ async def scrape_all(manager: ConnectionManager, state=None):
     total_errors = 0
 
     async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=True)
+        browser = await p.chromium.launch(headless=config.headless)
         context = await browser.new_context(
             user_agent=random.choice(USER_AGENTS),
             viewport={"width": random.randint(1366, 1920), "height": 900},
@@ -51,10 +69,16 @@ async def scrape_all(manager: ConnectionManager, state=None):
         )
 
         for i, city in enumerate(pending):
-            # Check if should stop
             if state and not state.running:
-                await _log(manager, "info", "⏹ Scraping detenido por el usuario")
+                await _log(manager, "info", "Scraping detenido por el usuario")
                 break
+
+            if state and state.paused:
+                await _log(manager, "info", "Scraping pausado, esperando...")
+                while state and state.paused and state.running:
+                    await asyncio.sleep(1)
+                if not state or not state.running:
+                    break
 
             city_name = city["name"]
             department = city["department"]
@@ -62,16 +86,17 @@ async def scrape_all(manager: ConnectionManager, state=None):
             if state:
                 state.current_city = city_name
                 state.cities_done = i
+                state.cities_total = len(pending)
 
             await _log(manager, "info",
-                       f"→ Ciudad [{i + 1}/{len(pending)}]: {city_name}, {department}")
+                       f"-> Ciudad [{i + 1}/{len(pending)}]: {city_name}, {department}")
             await manager.broadcast({
                 "type": "progress",
-                "cities_done": i,
-                "cities_total": len(pending),
-                "places_found": count_places(),
-                "current_city": city_name,
-                "current_department": department,
+                "citiesDone": i,
+                "citiesTotal": len(pending),
+                "placesFound": count_places(),
+                "currentCity": city_name,
+                "currentDepartment": department,
             })
 
             city_places = 0
@@ -81,9 +106,12 @@ async def scrape_all(manager: ConnectionManager, state=None):
                 query = item["query"]
                 category = item["category"]
 
-                await _log(manager, "info", f'  Búsqueda: "{query}"')
+                if state and not state.running:
+                    break
 
-                places, errors = await _scrape_query(
+                await _log(manager, "info", f'  Busqueda: "{query}"')
+
+                places, errors = await _scrape_query_with_retry(
                     context, query, city_name, department, category, manager
                 )
                 total_errors += errors
@@ -101,23 +129,19 @@ async def scrape_all(manager: ConnectionManager, state=None):
                     else:
                         city_dupes += 1
 
-                await asyncio.sleep(random.uniform(2.0, 4.0))
+                delay = random.uniform(config.request_delay_min, config.request_delay_max)
+                await asyncio.sleep(delay)
 
             mark_city_complete(city_name, department, city_places)
             await _log(manager, "info",
-                       f"✓ {city_name} completada → {city_places} lugares"
+                       f"✓ {city_name} completada -> {city_places} lugares"
                        f" ({city_dupes} dupl. omitidos)")
             await manager.broadcast({
                 "type": "city_completed",
                 "city": city_name,
-                "places_count": city_places,
-                "duplicates_skipped": city_dupes,
+                "placesCount": city_places,
+                "duplicatesSkipped": city_dupes,
             })
-
-            # Wait if paused (completes current city before pausing)
-            if state:
-                while state.paused and state.running:
-                    await asyncio.sleep(1)
 
             await asyncio.sleep(random.uniform(3.0, 6.0))
 
@@ -127,12 +151,34 @@ async def scrape_all(manager: ConnectionManager, state=None):
     total = count_places()
     await manager.broadcast({
         "type": "scrape_complete",
-        "total_places": total,
-        "duration_seconds": duration,
+        "totalPlaces": total,
+        "durationSeconds": duration,
         "errors": total_errors,
     })
     await _log(manager, "info",
-               f"✅ Scraping completado: {total} lugares en {duration}s")
+               f"Scraping completado: {total} lugares en {duration}s")
+
+
+async def _scrape_query_with_retry(
+    context: BrowserContext,
+    query: str,
+    city: str,
+    department: str,
+    category: str,
+    manager: ConnectionManager,
+) -> Tuple[List[Place], int]:
+    async def _scrape():
+        return await _scrape_query(context, query, city, department, category, manager)
+
+    try:
+        return await _retry_async(
+            _scrape,
+            max_retries=config.max_retries,
+            delay=config.retry_delay,
+        )
+    except Exception as e:
+        logger.error(f"Query '{query}' failed after {config.max_retries} attempts: {e}")
+        return [], 1
 
 
 async def _scrape_query(
@@ -142,38 +188,35 @@ async def _scrape_query(
     department: str,
     category: str,
     manager: ConnectionManager,
-) -> tuple:
-    """Busca una query en Google Maps y retorna (places, error_count)."""
+) -> Tuple[List[Place], int]:
     page = await context.new_page()
     places = []
     errors = 0
 
     try:
         url = f"https://www.google.com/maps/search/{query.replace(' ', '+')}"
-        await page.goto(url, wait_until="domcontentloaded", timeout=30_000)
+        await page.goto(url, wait_until="domcontentloaded", timeout=config.timeout_ms)
         await asyncio.sleep(2)
 
-        # Detectar CAPTCHA
         if await page.locator("form#captcha-form").count() > 0:
             await _log(manager, "warn",
-                       "⚠ reCAPTCHA detectado — esperando 60s...")
+                       "reCAPTCHA detectado -- esperando 60s...")
             await asyncio.sleep(60)
             await page.reload(wait_until="domcontentloaded")
             await asyncio.sleep(3)
 
-        # Scroll para cargar más resultados
         feed = page.locator('div[role="feed"]')
         if await feed.count() == 0:
             return places, errors
 
-        for _ in range(3):
+        for _ in range(config.scroll_attempts):
             await feed.evaluate("el => el.scrollTo(0, el.scrollHeight)")
             await asyncio.sleep(1.5)
 
         items = await page.locator(".Nv2PK").all()
         found_count = 0
 
-        for item in items[:20]:  # max 20 per query
+        for item in items[:config.max_places_per_query]:
             try:
                 await item.click()
                 await asyncio.sleep(1.8)
@@ -186,7 +229,7 @@ async def _scrape_query(
             except Exception as e:
                 errors += 1
                 await _log(manager, "warn",
-                           f"  ⚠ Error extrayendo lugar: {str(e)[:80]}")
+                           f"  Error extrayendo lugar: {str(e)[:80]}")
                 continue
 
         if found_count:
@@ -195,7 +238,7 @@ async def _scrape_query(
     except Exception as e:
         errors += 1
         await _log(manager, "error",
-                   f"  ✗ Error en búsqueda '{query}': {str(e)[:100]}")
+                   f"  Error en busqueda '{query}': {str(e)[:100]}")
     finally:
         await page.close()
 
@@ -205,12 +248,11 @@ async def _scrape_query(
 async def _extract_place(
     page: Page, city: str, department: str, category: str
 ) -> Optional[Place]:
-    """Extrae datos del panel lateral de un lugar en Google Maps."""
     try:
         name_locator = page.locator("h1").first
         if await name_locator.count() == 0:
             return None
-        name = (await name_locator.text_content(timeout=5_000) or "").strip()
+        name = (await name_locator.text_content(timeout=5000) or "").strip()
         if not name:
             return None
 
@@ -260,8 +302,7 @@ async def _extract_place(
         return None
 
 
-def _extract_coords(url: str):
-    """Extrae (lat, lng) del URL de Google Maps."""
+def _extract_coords(url: str) -> Tuple[Optional[float], Optional[float]]:
     match = re.search(r"@(-?\d+\.\d+),(-?\d+\.\d+)", url)
     if match:
         return float(match.group(1)), float(match.group(2))

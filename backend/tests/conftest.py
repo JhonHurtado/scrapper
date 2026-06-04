@@ -1,58 +1,29 @@
-# backend/database/db.py
+# backend/tests/conftest.py
+import os
+import pytest
 import sqlite3
-import logging
-from contextlib import contextmanager
-from pathlib import Path
 
-from ..config import config
-
-logger = logging.getLogger(__name__)
-
-_connection = None
+TEST_DB_CONN = None
 
 
-def get_connection() -> sqlite3.Connection:
-    global _connection
-    if _connection is None:
-        config.db_path.parent.mkdir(parents=True, exist_ok=True)
-        _connection = sqlite3.connect(str(config.db_path), check_same_thread=False)
-        _connection.row_factory = sqlite3.Row
-    return _connection
+@pytest.fixture(autouse=True)
+def fresh_db():
+    global TEST_DB_CONN
 
+    from backend.database import db as db_module
+    if db_module._connection:
+        try:
+            db_module._connection.close()
+        except Exception:
+            pass
+    db_module._connection = None
 
-@contextmanager
-def get_db():
-    conn = get_connection()
-    try:
-        yield conn
-        conn.commit()
-    except Exception:
-        conn.rollback()
-        raise
-    finally:
-        pass
+    TEST_DB_CONN = sqlite3.connect(":memory:", check_same_thread=False)
+    TEST_DB_CONN.row_factory = sqlite3.Row
 
+    db_module._connection = TEST_DB_CONN
 
-def close_db():
-    global _connection
-    if _connection:
-        _connection.close()
-        _connection = None
-
-
-def reset_db():
-    global _connection
-    if _connection:
-        _connection.close()
-        _connection = None
-    config.db_path.unlink(missing_ok=True)
-
-
-def init_db():
-    logger.info(f"Initializing database at {config.db_path}")
-    config.db_path.parent.mkdir(parents=True, exist_ok=True)
-
-    conn = get_connection()
+    conn = db_module.get_connection()
     conn.executescript("""
         PRAGMA journal_mode=WAL;
         PRAGMA synchronous=NORMAL;
@@ -104,4 +75,33 @@ def init_db():
         CREATE INDEX IF NOT EXISTS idx_places_name ON places(name);
         CREATE INDEX IF NOT EXISTS idx_city_progress_status ON city_progress(status);
     """)
-    logger.info("Database initialized successfully")
+
+    yield
+
+    if TEST_DB_CONN:
+        TEST_DB_CONN.close()
+    TEST_DB_CONN = None
+    db_module._connection = None
+
+
+@pytest.fixture
+def temp_db():
+    pass
+
+
+@pytest.fixture
+def sample_place_data():
+    return {
+        "name": "Parque Principal",
+        "city": "Bogotá",
+        "department": "Cundinamarca",
+        "category": "nature",
+        "description": "Un parque hermoso en el centro de la ciudad",
+        "address": "Calle 1 # 1-1",
+        "latitude": 4.6097,
+        "longitude": -74.0817,
+        "main_image": "https://example.com/image.jpg",
+        "phone": "+57 1 123 4567",
+        "website": "https://example.com",
+        "source_url": "https://www.google.com/maps/place/test",
+    }
