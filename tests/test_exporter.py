@@ -5,11 +5,13 @@ import pytest
 
 @pytest.fixture
 def setup_db_with_places(tmp_path, monkeypatch):
-    monkeypatch.setattr("backend.database.db.DB_PATH", tmp_path / "test.db")
+    from backend.config import config
+    monkeypatch.setattr(config, "db_path", tmp_path / "test.db")
     monkeypatch.setattr("backend.exporters.json_exporter.OUTPUT_DIR", tmp_path / "output")
     monkeypatch.setattr("backend.exporters.json_exporter.BY_CITY_DIR", tmp_path / "output" / "by_city")
-    from backend.database.db import init_db
+    from backend.database.db import close_db, init_db
     from backend.database.models import Place, save_place
+    close_db()
     init_db()
     save_place(Place(name="Plaza de Bolívar", city="Bogotá",
                      department="Cundinamarca", category="monuments",
@@ -18,7 +20,8 @@ def setup_db_with_places(tmp_path, monkeypatch):
                      department="Cundinamarca", category="viewpoints"))
     save_place(Place(name="El Peñol", city="Guatapé",
                      department="Antioquia", category="nature"))
-    return tmp_path
+    yield tmp_path
+    close_db()
 
 
 def test_export_creates_main_json(setup_db_with_places):

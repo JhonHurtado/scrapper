@@ -5,11 +5,14 @@ from fastapi.testclient import TestClient
 
 @pytest.fixture
 def client(tmp_path, monkeypatch):
-    monkeypatch.setattr("backend.database.db.DB_PATH", tmp_path / "test.db")
-    from backend.database.db import init_db
+    from backend.config import config
+    from backend.database.db import close_db, init_db
+    monkeypatch.setattr(config, "db_path", tmp_path / "test.db")
+    close_db()
     init_db()
     from backend.main import app
-    return TestClient(app)
+    yield TestClient(app)
+    close_db()
 
 
 def test_scrape_status_idle(client):
@@ -17,7 +20,7 @@ def test_scrape_status_idle(client):
     assert r.status_code == 200
     data = r.json()
     assert data["running"] is False
-    assert "places" in data
+    assert "placesCount" in data
 
 
 def test_list_places_empty(client):
@@ -27,9 +30,11 @@ def test_list_places_empty(client):
 
 
 def test_list_places_pagination(tmp_path, monkeypatch):
-    monkeypatch.setattr("backend.database.db.DB_PATH", tmp_path / "test.db")
-    from backend.database.db import init_db
+    from backend.config import config
+    from backend.database.db import close_db, init_db
     from backend.database.models import Place, save_place
+    monkeypatch.setattr(config, "db_path", tmp_path / "test.db")
+    close_db()
     init_db()
     for i in range(5):
         save_place(Place(name=f"Lugar {i}", city="Bogotá",

@@ -7,10 +7,13 @@ from unittest.mock import patch
 @pytest.fixture
 def tmp_db(tmp_path, monkeypatch):
     db_file = tmp_path / "test.db"
-    monkeypatch.setattr("backend.database.db.DB_PATH", db_file)
-    from backend.database.db import init_db
+    from backend.config import config
+    from backend.database.db import close_db, init_db
+    monkeypatch.setattr(config, "db_path", db_file)
+    close_db()
     init_db()
-    return db_file
+    yield db_file
+    close_db()
 
 
 def test_save_and_retrieve_place(tmp_db):
@@ -90,3 +93,23 @@ def test_extract_coords_missing():
     lat, lng = _extract_coords("https://www.google.com/maps/search/bogota")
     assert lat is None
     assert lng is None
+
+
+def test_extract_place_coords_from_href():
+    from backend.scraper.playwright_scraper import _extract_place_coords
+    href = ("https://www.google.com/maps/place/Pozo+de+Donato/data="
+            "!4m7!3m6!1s0xabc!8m2!3d5.5566297!4d-73.3610534!16s")
+    lat, lng = _extract_place_coords(href)
+    assert lat == 5.5566297
+    assert lng == -73.3610534
+
+
+def test_extract_place_coords_missing():
+    from backend.scraper.playwright_scraper import _extract_place_coords
+    assert _extract_place_coords("https://www.google.com/maps/place/x") == (None, None)
+
+
+def test_clean_text_strips_icon_glyphs():
+    from backend.scraper.playwright_scraper import _clean_text
+    assert _clean_text("Cra. 2a #Cl. 18, Bogotá") == "Cra. 2a #Cl. 18, Bogotá"
+    assert _clean_text(None) == ""

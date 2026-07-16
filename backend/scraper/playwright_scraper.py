@@ -218,10 +218,21 @@ async def _scrape_query(
 
         for item in items[:config.max_places_per_query]:
             try:
+                # Nombre y coordenadas vienen del anchor del listado: el h1 del
+                # panel de detalle ahora es "Resultados" y la URL solo trae el
+                # centro del mapa, no el lugar.
+                link = item.locator("a.hfpxzc").first
+                name = _clean_text(await link.get_attribute("aria-label"))
+                href = await link.get_attribute("href") or ""
+                lat, lng = _extract_place_coords(href)
+
                 await item.click()
                 await asyncio.sleep(1.8)
 
-                place = await _extract_place(page, city, department, category)
+                place = await _extract_place(
+                    page, city, department, category,
+                    name=name, lat=lat, lng=lng, place_url=href or None,
+                )
                 if place:
                     places.append(place)
                     found_count += 1
@@ -246,27 +257,31 @@ async def _scrape_query(
 
 
 async def _extract_place(
-    page: Page, city: str, department: str, category: str
+    page: Page, city: str, department: str, category: str,
+    name: str = "", lat: Optional[float] = None, lng: Optional[float] = None,
+    place_url: Optional[str] = None,
 ) -> Optional[Place]:
     try:
-        name_locator = page.locator("h1").first
-        if await name_locator.count() == 0:
-            return None
-        name = (await name_locator.text_content(timeout=5000) or "").strip()
         if not name:
+            name_locator = page.locator("h1").first
+            if await name_locator.count() == 0:
+                return None
+            name = (await name_locator.text_content(timeout=5000) or "").strip()
+        if not name or name == "Resultados":
             return None
 
-        lat, lng = _extract_coords(page.url)
+        if lat is None or lng is None:
+            lat, lng = _extract_coords(page.url)
 
         address = ""
         addr = page.locator('button[data-item-id="address"]').first
         if await addr.count() > 0:
-            address = (await addr.text_content() or "").strip()
+            address = _clean_text(await addr.text_content())
 
         phone = None
         phone_el = page.locator('button[data-item-id="phone"]').first
         if await phone_el.count() > 0:
-            phone = (await phone_el.text_content() or "").strip() or None
+            phone = _clean_text(await phone_el.text_content()) or None
 
         website = None
         web_el = page.locator('a[data-item-id="authority"]').first
@@ -295,7 +310,7 @@ async def _extract_place(
             main_image=main_image,
             phone=phone,
             website=website,
-            source_url=page.url,
+            source_url=place_url or page.url,
         )
 
     except Exception:
@@ -307,6 +322,19 @@ def _extract_coords(url: str) -> Tuple[Optional[float], Optional[float]]:
     if match:
         return float(match.group(1)), float(match.group(2))
     return None, None
+
+
+def _extract_place_coords(href: str) -> Tuple[Optional[float], Optional[float]]:
+    """Coordenadas del lugar desde el href del resultado (!3d<lat>!4d<lng>)."""
+    match = re.search(r"!3d(-?\d+\.\d+)!4d(-?\d+\.\d+)", href)
+    if match:
+        return float(match.group(1)), float(match.group(2))
+    return None, None
+
+
+def _clean_text(text: Optional[str]) -> str:
+    """Quita glifos de iconos (área de uso privado Unicode) y espacios."""
+    return re.sub(r"[-]", "", text or "").strip()
 
 
 async def _log(manager: ConnectionManager, level: str, message: str):

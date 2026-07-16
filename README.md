@@ -168,9 +168,20 @@ source .venv/bin/activate
 pytest -v
 ```
 
-Expected: **21 passed**
+Expected: **48 passed**
 
 ---
+
+## Export a Prisma
+
+```bash
+.venv/bin/python -m backend.exporters.prisma_exporter   # genera output/prisma/seed-data.json
+```
+
+Filtra lugares sin coordenadas, fuera de Colombia u outliers (>60 km de la mediana de su ciudad)
+y garantiza `description`/`address` no vacíos. Copia `prisma/seed.ts` y el JSON a tu proyecto
+Prisma y corre `npx prisma db seed` (crea las 4 categorías, un usuario dueño y los lugares
+con `PlaceCategory` + `PlaceImage`).
 
 ## Notes
 
