@@ -109,6 +109,45 @@ def test_extract_place_coords_missing():
     assert _extract_place_coords("https://www.google.com/maps/place/x") == (None, None)
 
 
+def test_extract_google_place_id():
+    from backend.scraper.playwright_scraper import _extract_google_place_id
+    href = ("https://www.google.com/maps/place/Mirador/data="
+            "!4m7!3m6!1s0x8e47659cd1ce58cb:0xaf820e9563eab5b2!8m2!3d5.04!4d-75.51")
+    assert _extract_google_place_id(href) == "0x8e47659cd1ce58cb:0xaf820e9563eab5b2"
+    assert _extract_google_place_id("https://www.google.com/maps/place/x") is None
+
+
+def test_map_category_by_type_label():
+    from backend.scraper.playwright_scraper import _map_category
+    assert _map_category("Mirador", "cultural") == "viewpoints"
+    assert _map_category("Iglesia católica", "nature") == "monuments"
+    assert _map_category("Parque nacional", "monuments") == "nature"
+    assert _map_category("Cascada", "cultural") == "nature"
+    assert _map_category("Museo de historia", "nature") == "cultural"
+    # sin match o vacío -> categoría de la búsqueda
+    assert _map_category("Atracción turística", "nature") == "nature"
+    assert _map_category("", "monuments") == "monuments"
+
+
+def test_place_key_defaults_to_coords_then_slug():
+    from backend.database.models import Place
+    p = Place(name="X", city="Y", department="Z", category="nature",
+              latitude=4.123456789, longitude=-74.1)
+    assert p.place_key == "4.12346,-74.10000"
+    q = Place(name="X", city="Y", department="Z", category="nature")
+    assert q.place_key == q.slug
+
+
+def test_save_place_dedupes_by_place_key(tmp_db):
+    from backend.database.models import Place, save_place
+    a = Place(name="Gran Malecón", city="Barranquilla", department="Atlántico",
+              category="viewpoints", place_key="0xabc:0xdef")
+    b = Place(name="Gran Malecón del Río", city="Bogotá", department="Cundinamarca",
+              category="monuments", place_key="0xabc:0xdef")
+    assert save_place(a) is True
+    assert save_place(b) is False  # mismo lugar físico, otra categoría/ciudad
+
+
 def test_clean_text_strips_icon_glyphs():
     from backend.scraper.playwright_scraper import _clean_text
     assert _clean_text("Cra. 2a #Cl. 18, Bogotá") == "Cra. 2a #Cl. 18, Bogotá"

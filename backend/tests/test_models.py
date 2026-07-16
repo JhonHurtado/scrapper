@@ -52,7 +52,8 @@ def test_save_duplicate_place(sample_place_data):
 
 def test_get_all_places(sample_place_data):
     place1 = Place(**sample_place_data)
-    place2 = Place(**{**sample_place_data, "name": "Another Place", "city": "Medellín"})
+    place2 = Place(**{**sample_place_data, "name": "Another Place", "city": "Medellín",
+                    "latitude": 6.2442, "longitude": -75.5812})
     save_place(place1)
     save_place(place2)
     places = get_all_places()
@@ -61,7 +62,8 @@ def test_get_all_places(sample_place_data):
 
 def test_get_places_by_city(sample_place_data):
     place1 = Place(**sample_place_data)
-    place2 = Place(**{**sample_place_data, "name": "Medellín Place", "city": "Medellín"})
+    place2 = Place(**{**sample_place_data, "name": "Medellín Place", "city": "Medellín",
+                    "latitude": 6.2442, "longitude": -75.5812})
     save_place(place1)
     save_place(place2)
     bogota_places = get_places_by_city("bogota")

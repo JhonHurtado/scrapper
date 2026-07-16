@@ -48,8 +48,11 @@ def fresh_db():
             website          TEXT,
             category         TEXT NOT NULL,
             scraped_at       TEXT NOT NULL,
-            source_url       TEXT
+            source_url       TEXT,
+            place_key        TEXT
         );
+
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_places_place_key ON places(place_key);
 
         CREATE TABLE IF NOT EXISTS scrape_sessions (
             id               TEXT PRIMARY KEY,

@@ -33,11 +33,12 @@ export interface ScrapingStats {
   status: 'idle' | 'running' | 'paused' | 'completed'
 }
 
+// El backend emite camelCase (ver scrape_all en playwright_scraper.py)
 export type WsMessage =
   | { type: 'connected'; session_id: string }
   | { type: 'log'; level: LogEntry['level']; message: string; timestamp: string }
   | { type: 'place_found'; place: Place }
-  | { type: 'progress'; cities_done: number; cities_total: number; places_found: number; current_city: string; current_department: string }
-  | { type: 'city_completed'; city: string; places_count: number; duplicates_skipped: number }
-  | { type: 'scrape_complete'; total_places: number; duration_seconds: number; errors: number }
+  | { type: 'progress'; citiesDone: number; citiesTotal: number; placesFound: number; currentCity: string; currentDepartment: string }
+  | { type: 'city_completed'; city: string; placesCount: number; duplicatesSkipped: number }
+  | { type: 'scrape_complete'; totalPlaces: number; durationSeconds: number; errors: number }
   | { type: 'error'; message: string; city?: string }

@@ -225,6 +225,7 @@ async def _scrape_query(
                 name = _clean_text(await link.get_attribute("aria-label"))
                 href = await link.get_attribute("href") or ""
                 lat, lng = _extract_place_coords(href)
+                place_key = _extract_google_place_id(href) or ""
 
                 await item.click()
                 await asyncio.sleep(1.8)
@@ -232,6 +233,7 @@ async def _scrape_query(
                 place = await _extract_place(
                     page, city, department, category,
                     name=name, lat=lat, lng=lng, place_url=href or None,
+                    place_key=place_key,
                 )
                 if place:
                     places.append(place)
@@ -259,7 +261,7 @@ async def _scrape_query(
 async def _extract_place(
     page: Page, city: str, department: str, category: str,
     name: str = "", lat: Optional[float] = None, lng: Optional[float] = None,
-    place_url: Optional[str] = None,
+    place_url: Optional[str] = None, place_key: str = "",
 ) -> Optional[Place]:
     try:
         if not name:
@@ -272,6 +274,11 @@ async def _extract_place(
 
         if lat is None or lng is None:
             lat, lng = _extract_coords(page.url)
+
+        # Clasificar por el tipo que Google le asigna al lugar, no por la búsqueda
+        type_el = page.locator("button.DkEaL").first
+        if await type_el.count() > 0:
+            category = _map_category(_clean_text(await type_el.text_content()), category)
 
         address = ""
         addr = page.locator('button[data-item-id="address"]').first
@@ -299,6 +306,7 @@ async def _extract_place(
             description = (await desc_el.text_content() or "").strip()
 
         return Place(
+            place_key=place_key,
             name=name,
             city=city,
             department=department,
@@ -322,6 +330,39 @@ def _extract_coords(url: str) -> Tuple[Optional[float], Optional[float]]:
     if match:
         return float(match.group(1)), float(match.group(2))
     return None, None
+
+
+def _extract_google_place_id(href: str) -> Optional[str]:
+    """ID estable del lugar en Google Maps (!1s0x...:0x...) — misma identidad
+    sin importar desde qué búsqueda o ciudad se encontró."""
+    match = re.search(r"!1s(0x[0-9a-f]+:0x[0-9a-f]+)", href)
+    return match.group(1) if match else None
+
+
+# Palabras clave del tipo de lugar de Google -> categoría propia (orden importa)
+_TYPE_KEYWORDS = [
+    ("viewpoints", ("mirador", "vista panorámica", "observatorio", "malecón")),
+    ("nature", ("parque nacional", "parque natural", "reserva", "cascada", "catarata",
+                "sendero", "senderismo", "laguna", "lago", "playa", "jardín botánico",
+                "humedal", "cerro", "montaña", "cueva", "parque ecológico",
+                "área de pícnic", "camping", "río", "parque")),
+    ("monuments", ("monumento", "iglesia", "catedral", "basílica", "capilla",
+                   "santuario", "histórico", "ruinas", "arqueológic", "castillo",
+                   "fuerte", "templo", "estatua")),
+    ("cultural", ("museo", "mercado", "centro cultural", "teatro", "plaza", "galería",
+                  "biblioteca", "artesanía", "barrio")),
+]
+
+
+def _map_category(type_label: str, fallback: str) -> str:
+    """Mapea el tipo de Google ("Mirador", "Iglesia católica") a nuestra categoría.
+    Sin match (p. ej. "Atracción turística") -> categoría de la búsqueda."""
+    label = (type_label or "").lower()
+    if label:
+        for cat, keywords in _TYPE_KEYWORDS:
+            if any(k in label for k in keywords):
+                return cat
+    return fallback
 
 
 def _extract_place_coords(href: str) -> Tuple[Optional[float], Optional[float]]:

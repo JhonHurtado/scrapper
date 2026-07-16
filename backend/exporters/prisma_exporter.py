@@ -31,6 +31,10 @@ LNG_RANGE = (-82.0, -66.0)
 MAX_KM_FROM_CITY = 60.0
 MIN_CITY_SAMPLE = 3
 
+# Negocios que no son sitios turísticos pero aparecen en las búsquedas
+_EXCLUDE_NAME = ("agencia de turismo", "agencia de viajes", "tour operador",
+                 "operador turístico", "travel agency")
+
 
 def _haversine_km(lat1: float, lng1: float, lat2: float, lng2: float) -> float:
     p1, p2 = math.radians(lat1), math.radians(lat2)
@@ -49,6 +53,7 @@ def build_seed_data(places: List[Place]) -> dict:
         if p.latitude is not None and p.longitude is not None
         and LAT_RANGE[0] <= p.latitude <= LAT_RANGE[1]
         and LNG_RANGE[0] <= p.longitude <= LNG_RANGE[1]
+        and not any(x in p.name.lower() for x in _EXCLUDE_NAME)
     ]
 
     by_city: dict = {}

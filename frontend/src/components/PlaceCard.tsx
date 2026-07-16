@@ -4,12 +4,15 @@ interface Props {
   place: Place
 }
 
-const CATEGORY_CONFIG = {
-  monuments: { emoji: '🏛️', label: 'Patrimonio',  bg: 'rgba(251,191,36,0.15)',  color: '#fbbf24', border: 'rgba(251,191,36,0.3)' },
-  nature:    { emoji: '🌿', label: 'Naturaleza',   bg: 'rgba(74,222,128,0.15)',  color: '#4ade80', border: 'rgba(74,222,128,0.3)' },
-  viewpoints:{ emoji: '🗺️', label: 'Mirador',      bg: 'rgba(96,165,250,0.15)',  color: '#60a5fa', border: 'rgba(96,165,250,0.3)' },
-  cultural:  { emoji: '🏨', label: 'Cultural',     bg: 'rgba(167,139,250,0.15)', color: '#a78bfa', border: 'rgba(167,139,250,0.3)' },
+// Paleta categórica validada (CVD-safe sobre superficie oscura)
+export const CATEGORY_CONFIG = {
+  monuments: { emoji: '🏛️', label: 'Patrimonio', color: '#c98500' },
+  nature: { emoji: '🌿', label: 'Naturaleza', color: '#199e70' },
+  viewpoints: { emoji: '🌄', label: 'Mirador', color: '#3987e5' },
+  cultural: { emoji: '🎭', label: 'Cultural', color: '#d55181' },
 } as const
+
+export type CategoryKey = keyof typeof CATEGORY_CONFIG
 
 export function PlaceCard({ place }: Props) {
   const config = CATEGORY_CONFIG[place.category] ?? CATEGORY_CONFIG.cultural
@@ -50,7 +53,7 @@ export function PlaceCard({ place }: Props) {
         </div>
 
         <div style={{ display: 'flex', gap: 6, marginTop: 6, flexWrap: 'wrap' }}>
-          <Tag bg={config.bg} color={config.color} border={config.border}>
+          <Tag bg={`${config.color}26`} color={config.color} border={`${config.color}4d`}>
             {config.emoji} {config.label}
           </Tag>
           {place.website && (
@@ -62,7 +65,7 @@ export function PlaceCard({ place }: Props) {
 
         {place.latitude && place.longitude && (
           <div style={{ fontSize: 10, color: 'var(--text-dimmer)', fontFamily: 'var(--font-mono)', marginTop: 4 }}>
-            {place.latitude.toFixed(4)}° N, {place.longitude.toFixed(4)}° W
+            {Math.abs(place.latitude).toFixed(4)}° {place.latitude >= 0 ? 'N' : 'S'}, {Math.abs(place.longitude).toFixed(4)}° {place.longitude >= 0 ? 'E' : 'W'}
           </div>
         )}
       </div>

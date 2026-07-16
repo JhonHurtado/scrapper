@@ -41,6 +41,11 @@ def test_description_and_address_never_empty():
     assert p["shortDescription"]
 
 
+def test_excludes_non_sites_by_name():
+    data = build_seed_data([_place("Agencia de Turismo Ecoaventur"), _place("Plaza Mayor")])
+    assert [p["name"] for p in data["places"]] == ["Plaza Mayor"]
+
+
 def test_categories_included():
     data = build_seed_data([])
     slugs = {c["slug"] for c in data["categories"]}

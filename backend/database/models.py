@@ -32,6 +32,7 @@ class Place:
     source_url: Optional[str] = None
     id: str = ""
     slug: str = ""
+    place_key: str = ""
 
     def __post_init__(self):
         if not self.id:
@@ -42,6 +43,13 @@ class Place:
             self.scraped_at = datetime.now(timezone.utc).isoformat()
         if self.description and not self.short_description:
             self.short_description = self.description[:160]
+        # Identidad física del lugar (independiente de categoría/ciudad):
+        # Google place ID si lo hay; si no, coordenadas redondeadas; si no, slug.
+        if not self.place_key:
+            if self.latitude is not None and self.longitude is not None:
+                self.place_key = f"{self.latitude:.5f},{self.longitude:.5f}"
+            else:
+                self.place_key = self.slug
 
     def to_dict(self) -> dict:
         return {
@@ -76,14 +84,14 @@ def save_place(place: Place) -> bool:
                 """INSERT INTO places
                    (id, name, slug, description, short_description, address,
                     city, city_slug, department, country, latitude, longitude, main_image,
-                    phone, email, website, category, scraped_at, source_url)
-                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                    phone, email, website, category, scraped_at, source_url, place_key)
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                 (place.id, place.name, place.slug, place.description,
                  place.short_description, place.address, place.city, city_slug,
                  place.department, place.country, place.latitude,
                  place.longitude, place.main_image, place.phone,
                  place.email, place.website, place.category,
-                 place.scraped_at, place.source_url),
+                 place.scraped_at, place.source_url, place.place_key),
             )
             return True
         except sqlite3.IntegrityError:
@@ -189,4 +197,5 @@ def _row_to_place(row) -> Place:
         category=row["category"],
         scraped_at=row["scraped_at"],
         source_url=row["source_url"],
+        place_key=row["place_key"] or "",
     )

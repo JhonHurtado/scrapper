@@ -55,7 +55,7 @@ export function StatsBar({ stats, connected, onStart, onPause, onStop, onExport 
       <div style={{ flex: 1, minWidth: 150 }}>
         {stats.current_city && (
           <div style={{ fontSize: 11, color: 'var(--text-dim)', marginBottom: 4 }}>
-            ⟳ {stats.current_city}, {stats.current_department}
+            ⟳ {stats.current_city}{stats.current_department ? `, ${stats.current_department}` : ''}
           </div>
         )}
         <div style={{ height: 5, background: 'var(--bg-card)', borderRadius: 3, overflow: 'hidden' }}>

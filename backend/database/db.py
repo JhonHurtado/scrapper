@@ -77,7 +77,8 @@ def init_db():
             website          TEXT,
             category         TEXT NOT NULL,
             scraped_at       TEXT NOT NULL,
-            source_url       TEXT
+            source_url       TEXT,
+            place_key        TEXT
         );
 
         CREATE TABLE IF NOT EXISTS scrape_sessions (
@@ -104,4 +105,13 @@ def init_db():
         CREATE INDEX IF NOT EXISTS idx_places_name ON places(name);
         CREATE INDEX IF NOT EXISTS idx_city_progress_status ON city_progress(status);
     """)
+
+    # Migración: bases creadas antes de place_key
+    cols = [r[1] for r in conn.execute("PRAGMA table_info(places)")]
+    if "place_key" not in cols:
+        conn.execute("ALTER TABLE places ADD COLUMN place_key TEXT")
+    conn.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_places_place_key ON places(place_key)"
+    )
+    conn.commit()
     logger.info("Database initialized successfully")
