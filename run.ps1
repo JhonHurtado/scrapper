@@ -1,4 +1,4 @@
-# run.ps1 — Inicia el Colombia Tourist Scraper (backend + frontend) en Windows
+﻿# run.ps1 - Inicia el Colombia Tourist Scraper (backend + frontend) en Windows
 # Uso:  .\run.bat   (o: powershell -ExecutionPolicy Bypass -File run.ps1)
 $ErrorActionPreference = "Stop"
 $Root = Split-Path -Parent $MyInvocation.MyCommand.Path
@@ -8,7 +8,7 @@ function Log($msg)  { Write-Host "[run.ps1] $msg" -ForegroundColor Cyan }
 function Ok($msg)   { Write-Host "[run.ps1] $msg" -ForegroundColor Green }
 function Warn($msg) { Write-Host "[run.ps1] $msg" -ForegroundColor Yellow }
 
-# ── Localizar Python (python o py launcher) ─────────────────────────────────
+# --- Localizar Python (python o py launcher) --------------------------------
 $PyLauncher = $null
 if (Get-Command python -ErrorAction SilentlyContinue) { $PyLauncher = "python" }
 elseif (Get-Command py -ErrorAction SilentlyContinue) { $PyLauncher = "py" }
@@ -18,17 +18,17 @@ if (-not (Get-Command npm -ErrorAction SilentlyContinue)) {
     throw "npm no encontrado en el PATH. Instala Node.js 18+ desde https://nodejs.org"
 }
 
-# ── Entorno virtual de Python ────────────────────────────────────────────────
+# --- Entorno virtual de Python -----------------------------------------------
 $Venv = Join-Path $Root ".venv"
 $Python = Join-Path $Venv "Scripts\python.exe"
 if (-not (Test-Path $Python)) {
-    Warn "No existe .venv — creandolo e instalando dependencias..."
+    Warn "No existe .venv - creandolo e instalando dependencias..."
     if ($PyLauncher -eq "py") { py -3 -m venv $Venv } else { python -m venv $Venv }
     & $Python -m pip install -q -r (Join-Path $Root "requirements.txt")
     Ok "Dependencias de Python instaladas."
 }
 
-# ── Navegador de Playwright ──────────────────────────────────────────────────
+# --- Navegador de Playwright --------------------------------------------------
 $PwCache = Join-Path $env:LOCALAPPDATA "ms-playwright"
 if (-not (Test-Path $PwCache)) {
     Warn "Instalando Chromium de Playwright (~1 min)..."
@@ -36,7 +36,7 @@ if (-not (Test-Path $PwCache)) {
     Ok "Chromium instalado."
 }
 
-# ── Dependencias de Node ─────────────────────────────────────────────────────
+# --- Dependencias de Node ------------------------------------------------------
 if (-not (Test-Path (Join-Path $Root "frontend\node_modules"))) {
     Warn "Ejecutando npm install..."
     Push-Location (Join-Path $Root "frontend")
@@ -45,7 +45,7 @@ if (-not (Test-Path (Join-Path $Root "frontend\node_modules"))) {
     Ok "Dependencias de Node instaladas."
 }
 
-# ── Arrancar backend y frontend ──────────────────────────────────────────────
+# --- Arrancar backend y frontend -----------------------------------------------
 Log "Iniciando backend FastAPI en http://localhost:8000 ..."
 $Backend = Start-Process -FilePath $Python `
     -ArgumentList "-m", "uvicorn", "backend.main:app", "--host", "0.0.0.0", "--port", "8000" `
