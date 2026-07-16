@@ -1,6 +1,7 @@
 # backend/api/routes.py
 import asyncio
 import logging
+import sys
 from typing import Optional
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Query
@@ -99,10 +100,44 @@ async def start_scrape(background_tasks: BackgroundTasks):
     return {"status": "started"}
 
 
+def _loop_supports_playwright() -> bool:
+    """Playwright lanza Chromium con subprocess; en Windows eso solo funciona
+    sobre un ProactorEventLoop (uvicorn puede instalar un SelectorEventLoop)."""
+    if sys.platform != "win32":
+        return True
+    return isinstance(asyncio.get_running_loop(), getattr(asyncio, "ProactorEventLoop", ()))
+
+
+class LoopSafeManager:
+    """Reenvía broadcasts del hilo del scraper al event loop del servidor."""
+
+    def __init__(self, inner, server_loop: asyncio.AbstractEventLoop):
+        self._inner = inner
+        self._server_loop = server_loop
+
+    async def broadcast(self, message: dict):
+        asyncio.run_coroutine_threadsafe(self._inner.broadcast(message), self._server_loop)
+
+
+def _scrape_in_proactor_thread(proxy: "LoopSafeManager"):
+    """Corre el scraper en un loop Proactor propio (solo Windows)."""
+    from ..scraper.playwright_scraper import scrape_all
+    loop = asyncio.ProactorEventLoop() if sys.platform == "win32" else asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    try:
+        loop.run_until_complete(scrape_all(proxy, state))
+    finally:
+        loop.close()
+
+
 async def _run_scrape():
     from ..scraper.playwright_scraper import scrape_all
     try:
-        await scrape_all(manager, state)
+        if _loop_supports_playwright():
+            await scrape_all(manager, state)
+        else:
+            proxy = LoopSafeManager(manager, asyncio.get_running_loop())
+            await asyncio.to_thread(_scrape_in_proactor_thread, proxy)
     except Exception as e:
         logger.error(f"Scrape failed: {e}")
         await manager.broadcast({"type": "error", "message": str(e)})

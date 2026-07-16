@@ -27,11 +27,21 @@ A full-stack web scraper that collects **tourist place data** from Google Maps f
 
 ### One-command launch
 
+**macOS / Linux:**
+
 ```bash
 ./run.sh
 ```
 
-`run.sh` will:
+**Windows (PowerShell o cmd):**
+
+```powershell
+.\run.bat
+# o directamente:
+powershell -ExecutionPolicy Bypass -File run.ps1
+```
+
+Ambos scripts hacen lo mismo:
 
 1. Create a Python virtual environment (`.venv`) and install deps if missing
 2. Install Playwright's Chromium browser if missing
@@ -48,13 +58,21 @@ Press **Ctrl+C** to stop both processes.
 ### Backend
 
 ```bash
+# macOS / Linux
 python3 -m venv .venv
-source .venv/bin/activate          # Windows: .venv\Scripts\activate
+source .venv/bin/activate
+# Windows (PowerShell): python -m venv .venv ; .venv\Scripts\Activate.ps1
+# Windows (cmd):        python -m venv .venv && .venv\Scripts\activate.bat
+
 pip install -r requirements.txt
 python -m playwright install chromium
 
 uvicorn backend.main:app --reload
 ```
+
+> **Windows**: el backend fija la política Proactor de asyncio y, si el servidor
+> corre sobre un SelectorEventLoop, el scraper se ejecuta en un hilo con su
+> propio loop — Playwright necesita soporte de subprocess que el selector no tiene.
 
 ### Frontend
 
@@ -175,7 +193,8 @@ Expected: **48 passed**
 ## Export a Prisma
 
 ```bash
-.venv/bin/python -m backend.exporters.prisma_exporter   # genera output/prisma/seed-data.json
+.venv/bin/python -m backend.exporters.prisma_exporter        # macOS / Linux
+.venv\Scripts\python -m backend.exporters.prisma_exporter    # Windows
 ```
 
 Filtra lugares sin coordenadas, fuera de Colombia u outliers (>60 km de la mediana de su ciudad)

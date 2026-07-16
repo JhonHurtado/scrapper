@@ -1,7 +1,14 @@
 # backend/main.py
+import asyncio
+import sys
 import uuid
 import logging
 from contextlib import asynccontextmanager
+
+# Playwright lanza el navegador con subprocess; en Windows eso requiere
+# la política Proactor (debe fijarse antes de crear cualquier event loop).
+if sys.platform == "win32":
+    asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 
