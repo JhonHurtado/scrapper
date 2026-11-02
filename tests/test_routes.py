@@ -38,7 +38,8 @@ def test_list_places_pagination(tmp_path, monkeypatch):
     init_db()
     for i in range(5):
         save_place(Place(name=f"Lugar {i}", city="Bogotá",
-                         department="Cundinamarca", category="nature"))
+                         department="Cundinamarca", category="parques",
+                         source_type="alcaldia"))
     from backend.main import app
     c = TestClient(app)
     r = c.get("/api/places?page=1&per_page=3")

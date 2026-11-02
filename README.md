@@ -1,17 +1,62 @@
-# 🇨🇴 Colombia Tourist Scraper
+# 🇨🇴 Colombia Patrimonio Scraper
 
-A full-stack web scraper that collects **tourist place data** from Google Maps for Colombian cities, with a real-time monitoring dashboard.
+Scraper full-stack que recopila **solo sitios públicos de patrimonio cultural y
+turístico** de los municipios de Colombia, tomados de **fuentes oficiales
+verificables** (alcaldías, gobernaciones, oficinas de turismo y datos.gov.co),
+con un dashboard de monitoreo en tiempo real. Su salida es el catálogo que carga
+`backend-cityscout-2.0` (`prisma/data/places.json` → `npm run seed:places`).
 
 ---
 
-## Features
+## Cómo garantiza que la información sea oficial y verificable
 
-- **~130 Colombian cities** — 32 department capitals, intermediate cities, and Pueblos Patrimonio
-- **4 categories** — Monuments, Nature, Viewpoints, Cultural
-- **Real-time dashboard** — live logs + place cards via WebSocket
-- **Resumable scraping** — tracks per-city progress in SQLite; restarts from where it left off
-- **Anti-detection** — random User-Agent, viewport, `navigator.webdriver` override, CAPTCHA pause
-- **JSON export** — flat `places.json` + per-city files in `output/by_city/`
+1. **Solo fuentes del Estado.** El cliente HTTP (`backend/scraper/official/http.py`)
+   rechaza cualquier URL que no sea `*.gov.co` (o un dominio declarado en
+   `data/fuentes_oficiales.json`), y no sigue redirecciones que salgan de ellos.
+   Respeta `robots.txt`, espacia las peticiones por host y, si un portal responde
+   401/403/429, lo registra y sigue sin intentar evadirlo.
+2. **Todos los municipios.** `data/municipios.json` sale de la DIVIPOLA del DANE
+   (1.122 municipios y áreas no municipalizadas, con la coordenada de su
+   cabecera) y del directorio de Portales Territoriales de MinTIC (URL oficial
+   de cada alcaldía). Se regenera con `python scripts/build_municipios.py`.
+3. **Fuentes por municipio:**
+   - **Alcaldía.** La mayoría corre en la plataforma *Mi Colombia Digital*; se
+     lee su API pública (`/api/v1/menufind`, `/api/v1/contents`): sección
+     "Turismo"/"Sitios de interés" y búsqueda por tipo de sitio. Los portales
+     antiguos (plantilla SharePoint de Gobierno en Línea) y otros CMS se leen
+     como HTML ("Sitios de Interés", "Atractivos naturales", …).
+   - **Gobernación / oficina de turismo.** Las fichas se atribuyen al municipio
+     que mencionan; si no mencionan ninguno, se descartan.
+   - **datos.gov.co.** Inventarios turísticos y de patrimonio publicados por
+     alcaldías y gobernaciones (varios con coordenadas oficiales), declarados en
+     `data/fuentes_oficiales.json` con el mapeo de columnas.
+4. **Solo patrimonio público** (`official/heritage.py`): el nombre debe empezar
+   por un tipo de sitio (Iglesia, Museo, Plaza, Puente, Parque Arqueológico,
+   Cascada…); se descartan negocios (hotel, restaurante, finca, glamping, parque
+   temático…), titulares de noticias, encabezados genéricos y lo que la fuente
+   marque como propiedad privada. Los tipos ambiguos (una "casa", una
+   "hacienda") exigen evidencia patrimonial en el texto oficial.
+5. **Ubicación verificada** (`official/geocode.py`): coordenadas de la fuente
+   oficial, o de OpenStreetMap (Nominatim) — o Google Maps como respaldo
+   opcional — aceptadas solo si el nombre coincide en sus palabras distintivas,
+   el punto cae dentro del radio del municipio (40 km de la cabecera; 150 km en
+   Amazonía/Orinoquía) y no está en otro municipio.
+6. **Trazabilidad.** Cada sitio guarda `sourceUrl` (página oficial),
+   `sourceEntity`, `sourceType`, `evidenceUrl` (registro exacto en la API o el
+   dataset), `daneCode`, `geoSource` y `verified`. Al backend solo se exportan
+   los `verified` (el backend exige latitud/longitud).
+
+## Características
+
+- **1.122 municipios** (DIVIPOLA), empezando por capitales, ciudades
+  intermedias y Pueblos Patrimonio; 1.073 con portal de alcaldía verificado.
+- **20 categorías del backend** (`iglesias`, `museos`, `plazas`, `puentes`,
+  `sitios_arqueologicos`, `cascadas`, `reservas_naturales`…). Se excluyen
+  estadios, zoológicos y termales.
+- **Dashboard en tiempo real** — logs y tarjetas por WebSocket, con la fuente
+  oficial enlazada y el estado de verificación de cada sitio.
+- **Reanudable** — el progreso se guarda por código DANE en SQLite.
+- **Exportes** — `places.json` + `output/by_city/` y el catálogo para el backend.
 
 ---
 
@@ -84,42 +129,58 @@ npm run dev
 
 ---
 
-## Project Structure
+## Estructura
 
 ```
 .
 ├── backend/
-│   ├── main.py                  # FastAPI app + WebSocket endpoint
-│   ├── api/
-│   │   ├── routes.py            # REST endpoints (start/pause/stop/export)
-│   │   └── websocket.py         # ConnectionManager (broadcast)
-│   ├── database/
-│   │   ├── db.py                # SQLite connection + schema init
-│   │   └── models.py            # Place dataclass + CRUD functions
+│   ├── main.py                      # FastAPI + WebSocket
+│   ├── api/routes.py                # start/pause/stop/export/purge
+│   ├── database/                    # SQLite: places, city_progress, geocode_cache
 │   ├── scraper/
-│   │   ├── playwright_scraper.py  # Core Playwright scraping logic
-│   │   ├── cities.py            # List of ~130 Colombian cities
-│   │   └── queries.py           # Search queries per category
+│   │   ├── official_scraper.py      # Bucle principal (también CLI)
+│   │   ├── municipalities.py        # Catálogo DANE + portales de alcaldías
+│   │   ├── cities.py                # Orden de prioridad (códigos DANE)
+│   │   ├── data/
+│   │   │   ├── municipios.json      # DIVIPOLA + URLs oficiales (generado)
+│   │   │   └── fuentes_oficiales.json  # Datasets y páginas de turismo extra
+│   │   └── official/
+│   │       ├── http.py              # Cliente: solo *.gov.co, robots.txt, pausas
+│   │       ├── mcd.py               # API de Mi Colombia Digital
+│   │       ├── portal.py            # Portales HTML (SharePoint y otros)
+│   │       ├── html_extract.py      # Página → bloques título/descripción/imagen
+│   │       ├── departmental.py      # Gobernaciones y oficinas de turismo
+│   │       ├── datos_abiertos.py    # Inventarios en datos.gov.co
+│   │       ├── heritage.py          # ¿Es patrimonio público? ¿qué categoría?
+│   │       └── geocode.py           # Ubicación verificada (OSM / Google)
 │   └── exporters/
-│       └── json_exporter.py     # Export to JSON files
-├── frontend/
-│   ├── src/
-│   │   ├── App.tsx              # Root: Split View layout
-│   │   ├── components/
-│   │   │   ├── StatsBar.tsx     # KPI bar + control buttons
-│   │   │   ├── LogPanel.tsx     # Real-time log feed
-│   │   │   ├── PlaceCard.tsx    # Place info card
-│   │   │   └── PlacesPanel.tsx  # Scrollable list of cards
-│   │   ├── hooks/
-│   │   │   └── useWebSocket.ts  # Auto-reconnect WS hook
-│   │   └── types/index.ts       # TypeScript types
-│   └── vite.config.ts           # Dev proxy → localhost:8000
-├── tests/                       # pytest test suite (21 tests)
-├── output/                      # Generated JSON export
-├── data.db                      # SQLite database (auto-created)
-├── requirements.txt
-└── run.sh
+│       ├── json_exporter.py         # output/places.json + by_city/
+│       └── prisma_exporter.py       # output/prisma/places.json (backend)
+├── scripts/build_municipios.py      # Regenera data/municipios.json
+├── frontend/                        # Dashboard (React + Vite)
+└── tests/ , backend/tests/          # pytest (sin red: httpx.MockTransport)
 ```
+
+### Ejecutar sin el dashboard
+
+```bash
+python -m backend.scraper.official_scraper                      # todo el país
+python -m backend.scraper.official_scraper --solo 15407,68079   # Villa de Leyva y Barichara
+python -m backend.scraper.official_scraper --sin-gobernaciones --sin-google
+```
+
+### Variables de entorno nuevas
+
+| Variable | Por defecto | Uso |
+|----------|-------------|-----|
+| `ONLY_DANE_CODES` | (todos) | Municipios a recorrer, separados por coma |
+| `INCLUDE_DEPARTMENTAL` | `true` | Recorrer portales de gobernaciones |
+| `GEOCODER_GOOGLE_FALLBACK` | `true` | Google Maps si OpenStreetMap no ubica el sitio |
+| `GEO_MAX_KM` / `GEO_MAX_KM_LARGE` | `40` / `150` | Radio máximo desde la cabecera municipal |
+| `GEO_MIN_NAME_SIMILARITY` | `0.6` | Coincidencia mínima de nombre al geocodificar |
+| `HTTP_HOST_DELAY_SECONDS` | `0.8` | Pausa entre peticiones a un mismo portal |
+| `RESPECT_ROBOTS_TXT` | `true` | Respetar robots.txt |
+| `HTTP_USER_AGENT` | `CityScout-Scraper/2.0 (+repo)` | Identificación ante portales y OSM |
 
 ---
 
@@ -129,13 +190,16 @@ npm run dev
 
 | Method | Path | Description |
 |--------|------|-------------|
-| `POST` | `/api/scrape/start` | Start scraping |
-| `POST` | `/api/scrape/pause` | Pause after current city |
-| `POST` | `/api/scrape/resume` | Resume from pause |
-| `POST` | `/api/scrape/stop` | Stop after current city |
-| `GET`  | `/api/scrape/status` | Current scraping state |
-| `GET`  | `/api/export/json` | Download `places.json` |
-| `GET`  | `/api/places?page=1&page_size=50` | Paginated place list |
+| `POST` | `/api/scrape/start` | Iniciar |
+| `POST` | `/api/scrape/pause` | Pausar después del municipio actual |
+| `POST` | `/api/scrape/resume` | Reanudar |
+| `POST` | `/api/scrape/stop` | Detener |
+| `POST` | `/api/scrape/reset` | Volver a poner todos los municipios en pendiente |
+| `GET`  | `/api/scrape/status` | Estado (incluye `verifiedCount` y `legacyCount`) |
+| `GET`  | `/api/export/json` | `places.json` (todos los sitios oficiales) |
+| `GET`  | `/api/export/backend` | `places.json` con el formato de `backend-cityscout-2.0` |
+| `POST` | `/api/places/purge-legacy` | Borra lugares de la versión anterior (Google Maps sin fuente oficial) |
+| `GET`  | `/api/places?page=1&per_page=50` | Lista paginada |
 
 ### WebSocket Events (`ws://localhost:8000/ws`)
 
@@ -152,60 +216,64 @@ All messages are JSON. The server sends:
 
 ---
 
-## Data Schema
-
-Each place is exported with these fields (camelCase for Prisma compatibility):
+## Esquema de un sitio
 
 ```jsonc
 {
-  "id": "uuid-v4",
-  "name": "Catedral de Sal de Zipaquirá",
-  "slug": "catedral-de-sal-de-zipaquira-zipaquira",
-  "description": "...",
-  "shortDescription": "... (first 160 chars)",
-  "address": "Calle 1, Zipaquirá",
-  "city": "Zipaquirá",
-  "department": "Cundinamarca",
-  "country": "Colombia",
-  "latitude": 5.0231,
-  "longitude": -74.0035,
-  "mainImage": "https://...",
-  "phone": "+57 ...",
-  "email": null,
-  "website": "https://...",
-  "category": "monuments"
+  "name": "Casa Museo Antonio Nariño",
+  "slug": "casa-museo-antonio-narino-villa-de-leyva",
+  "description": "… texto oficial de la alcaldía …",
+  "address": "Carrera 9 Nº 10-25",
+  "city": "Villa de Leyva",
+  "department": "Boyacá",
+  "latitude": 5.6320868,
+  "longitude": -73.5249697,
+  "category": "museos",
+  "sourceUrl": "https://www.villadeleyva-boyaca.gov.co/MiMunicipio/Paginas/Sitios-de-Interes.aspx",
+  "sourceEntity": "Alcaldía de Villa de Leyva (Boyacá)",
+  "sourceType": "alcaldia",          // alcaldia | gobernacion | oficina_turismo | datos_abiertos
+  "evidenceUrl": "",                 // registro exacto en la API / dataset, si existe
+  "daneCode": "15407",
+  "geoSource": "openstreetmap",      // fuente_oficial | openstreetmap | google_maps
+  "geoDistanceKm": 0.04,
+  "verified": true
 }
 ```
 
 ---
 
-## Running Tests
+## Pruebas
 
 ```bash
 source .venv/bin/activate
-pytest -v
+pytest -q
 ```
 
-Expected: **48 passed**
+Las pruebas no usan red: las fuentes oficiales se simulan con `httpx.MockTransport`.
 
 ---
 
-## Export a Prisma
+## Exportar al backend (CityScout 2.0)
 
 ```bash
 .venv/bin/python -m backend.exporters.prisma_exporter        # macOS / Linux
 .venv\Scripts\python -m backend.exporters.prisma_exporter    # Windows
+cp output/prisma/places.json ../backend-cityscout-2.0/prisma/data/places.json
+cd ../backend-cityscout-2.0 && npm run seed:places
 ```
 
-Filtra lugares sin coordenadas, fuera de Colombia u outliers (>60 km de la mediana de su ciudad)
-y garantiza `description`/`address` no vacíos. Copia `prisma/seed.ts` y el JSON a tu proyecto
-Prisma y corre `npx prisma db seed` (crea las 4 categorías, un usuario dueño y los lugares
-con `PlaceCategory` + `PlaceImage`).
+`output/prisma/places.json` tiene el formato exacto que lee
+`prisma/seed-places.ts` (`metadata.total_kept` + `categories.<categoria>[]`,
+con las claves de categoría del seed del backend). Solo incluye sitios con
+fuente oficial y ubicación verificada dentro de Colombia; `metadata.excluded_reasons`
+dice cuántos quedaron fuera y por qué. Si un sitio no trae descripción, el seed
+del backend genera la de respaldo ("<nombre>, en <ciudad> (<departamento>).").
 
-## Notes
+## Notas
 
-- Scraping respects a **2–4 s delay** between queries and **3–6 s** between cities to reduce bot-detection risk
-- If a **CAPTCHA** is detected, the scraper pauses for 60 s and retries
-- Duplicate places (same slug) are silently skipped
-- Progress is stored in `city_progress` table — if you restart `run.sh`, already-completed cities are skipped
-- To start fresh: `rm data.db`
+- Las bases de datos de la versión anterior (búsquedas en Google Maps) se
+  migran solas: sus lugares quedan ocultos y fuera de los exportes; se borran con
+  `POST /api/places/purge-legacy`. El progreso anterior por ciudad se descarta.
+- Para empezar de cero: `rm data.db`.
+- Para agregar un dataset o la página de una oficina de turismo, edita
+  `backend/scraper/data/fuentes_oficiales.json` (debe ser de una entidad pública).

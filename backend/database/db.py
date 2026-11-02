@@ -48,6 +48,20 @@ def reset_db():
     config.db_path.unlink(missing_ok=True)
 
 
+# Columnas añadidas después de la primera versión del esquema (nombre → DDL).
+PLACE_COLUMNS = {
+    "place_key": "TEXT",
+    "dane_code": "TEXT",
+    "source_type": "TEXT NOT NULL DEFAULT ''",
+    "source_entity": "TEXT",
+    "evidence_url": "TEXT",
+    "geo_source": "TEXT",
+    "geo_distance_km": "REAL",
+    "geo_ref": "TEXT",
+    "verified": "INTEGER NOT NULL DEFAULT 0",
+}
+
+
 def init_db():
     logger.info(f"Initializing database at {config.db_path}")
     config.db_path.parent.mkdir(parents=True, exist_ok=True)
@@ -99,6 +113,12 @@ def init_db():
             completed_at TEXT
         );
 
+        CREATE TABLE IF NOT EXISTS geocode_cache (
+            query      TEXT PRIMARY KEY,
+            payload    TEXT NOT NULL,
+            created_at REAL NOT NULL
+        );
+
         CREATE INDEX IF NOT EXISTS idx_places_city_slug ON places(city_slug);
         CREATE INDEX IF NOT EXISTS idx_places_department ON places(department);
         CREATE INDEX IF NOT EXISTS idx_places_category ON places(category);
@@ -106,12 +126,20 @@ def init_db():
         CREATE INDEX IF NOT EXISTS idx_city_progress_status ON city_progress(status);
     """)
 
-    # Migración: bases creadas antes de place_key
+    # Migraciones de bases creadas por versiones anteriores
     cols = [r[1] for r in conn.execute("PRAGMA table_info(places)")]
-    if "place_key" not in cols:
-        conn.execute("ALTER TABLE places ADD COLUMN place_key TEXT")
+    for column, ddl in PLACE_COLUMNS.items():
+        if column not in cols:
+            conn.execute(f"ALTER TABLE places ADD COLUMN {column} {ddl}")
     conn.execute(
         "CREATE UNIQUE INDEX IF NOT EXISTS idx_places_place_key ON places(place_key)"
+    )
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_places_source_type ON places(source_type)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_places_dane ON places(dane_code)")
+    # El progreso ahora se lleva por código DANE (5 dígitos); las filas de la
+    # versión anterior (por slug de ciudad) ya no corresponden a nada.
+    conn.execute(
+        "DELETE FROM city_progress WHERE city_slug NOT GLOB '[0-9][0-9][0-9][0-9][0-9]'"
     )
     conn.commit()
     logger.info("Database initialized successfully")

@@ -1,125 +1,116 @@
 # backend/exporters/prisma_exporter.py
-"""Transforma los lugares scrapeados en seed data para el schema Prisma (Place/Category)."""
+"""Genera el catálogo con el formato EXACTO que consume el backend
+(backend-cityscout-2.0/prisma/data/places.json → ``npm run seed:places``):
+
+    {
+      "metadata":   {..., "total_kept": N, "categories": {"iglesias": 12, ...}},
+      "categories": {"iglesias": [LugarOrigen, ...], "museos": [...], ...}
+    }
+
+Solo entran sitios con fuente oficial Y ubicación verificada (el backend exige
+latitud/longitud). Cada lugar lleva además ``sourceUrl``/``sourceEntity`` para
+poder auditarlo; el seed del backend ignora los campos que no conoce.
+"""
 import json
-import math
+from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
-from statistics import median
 from typing import List
 
 from ..database.models import Place, get_all_places
+from ..scraper.official.heritage import BACKEND_CATEGORIES, EXCLUDED_CATEGORIES
 
 OUTPUT_DIR = Path(__file__).parent.parent.parent / "output"
 PRISMA_DIR = OUTPUT_DIR / "prisma"
 
-CATEGORIES = {
-    "monuments":  {"name": "Monumentos e Historia", "slug": "monumentos",
-                   "icon": "landmark", "label": "monumento histórico"},
-    "nature":     {"name": "Naturaleza", "slug": "naturaleza",
-                   "icon": "leaf", "label": "atractivo natural"},
-    "viewpoints": {"name": "Miradores y Paisajes", "slug": "miradores",
-                   "icon": "mountain", "label": "mirador"},
-    "cultural":   {"name": "Cultura", "slug": "cultura",
-                   "icon": "masks-theater", "label": "sitio cultural"},
-}
-
 # Caja delimitadora de Colombia (incluye San Andrés/Providencia y Amazonas)
 LAT_RANGE = (-4.5, 14.0)
 LNG_RANGE = (-82.0, -66.0)
-# ponytail: filtro de outliers por mediana de ciudad; si hace falta más precisión,
-# usar centroides oficiales DANE por municipio
-MAX_KM_FROM_CITY = 60.0
-MIN_CITY_SAMPLE = 3
-
-# Negocios que no son sitios turísticos pero aparecen en las búsquedas
-_EXCLUDE_NAME = ("agencia de turismo", "agencia de viajes", "tour operador",
-                 "operador turístico", "travel agency")
 
 
-def _haversine_km(lat1: float, lng1: float, lat2: float, lng2: float) -> float:
-    p1, p2 = math.radians(lat1), math.radians(lat2)
-    dp = math.radians(lat2 - lat1)
-    dl = math.radians(lng2 - lng1)
-    a = math.sin(dp / 2) ** 2 + math.cos(p1) * math.cos(p2) * math.sin(dl / 2) ** 2
-    return 2 * 6371.0 * math.asin(math.sqrt(a))
+def _in_colombia(p: Place) -> bool:
+    return (p.latitude is not None and p.longitude is not None
+            and LAT_RANGE[0] <= p.latitude <= LAT_RANGE[1]
+            and LNG_RANGE[0] <= p.longitude <= LNG_RANGE[1])
+
+
+def _exclusion_reason(p: Place) -> str:
+    if not p.source_type:
+        return "sin_fuente_oficial"
+    if not p.verified:
+        return "sin_ubicacion_verificada"
+    if not _in_colombia(p):
+        return "fuera_de_colombia"
+    if p.category not in BACKEND_CATEGORIES or p.category in EXCLUDED_CATEGORIES:
+        return "categoria_no_patrimonial"
+    return ""
+
+
+def _lugar(p: Place) -> dict:
+    description = p.description.strip()
+    return {
+        "name": p.name,
+        "slug": p.slug,
+        # El seed del backend genera "<nombre>, en <ciudad> (<depto>)." si viene
+        # vacía: no se inventa ninguna descripción aquí.
+        "description": description or None,
+        "shortDescription": (p.short_description or description)[:160] or None,
+        "address": p.address.strip() or None,
+        "city": p.city,
+        "department": p.department,
+        "country": p.country,
+        "latitude": p.latitude,
+        "longitude": p.longitude,
+        "mainImage": p.main_image,
+        "phone": p.phone,
+        "email": p.email,
+        "website": p.website,
+        # Trazabilidad (el seed del backend ignora estos campos)
+        "sourceUrl": p.source_url,
+        "sourceEntity": p.source_entity,
+        "sourceType": p.source_type,
+        "evidenceUrl": p.evidence_url or None,
+        "daneCode": p.dane_code,
+        "geoSource": p.geo_source,
+        "geoDistanceKm": p.geo_distance_km,
+    }
 
 
 def build_seed_data(places: List[Place]) -> dict:
-    """Filtra y normaliza lugares para cumplir el schema Prisma:
-    lat/lng no nulos y dentro de Colombia, sin outliers lejanos a su ciudad,
-    description y address nunca vacíos."""
-    valid = [
-        p for p in places
-        if p.latitude is not None and p.longitude is not None
-        and LAT_RANGE[0] <= p.latitude <= LAT_RANGE[1]
-        and LNG_RANGE[0] <= p.longitude <= LNG_RANGE[1]
-        and not any(x in p.name.lower() for x in _EXCLUDE_NAME)
-    ]
+    kept: dict = {}
+    excluded: Counter = Counter()
+    for p in sorted(places, key=lambda x: (x.department, x.city, x.name)):
+        reason = _exclusion_reason(p)
+        if reason:
+            excluded[reason] += 1
+            continue
+        kept.setdefault(p.category, []).append(_lugar(p))
 
-    by_city: dict = {}
-    for p in valid:
-        by_city.setdefault(p.city, []).append(p)
-
-    kept: List[Place] = []
-    dropped_outliers = 0
-    for city_places in by_city.values():
-        if len(city_places) >= MIN_CITY_SAMPLE:
-            med_lat = median(p.latitude for p in city_places)
-            med_lng = median(p.longitude for p in city_places)
-            for p in city_places:
-                if _haversine_km(p.latitude, p.longitude, med_lat, med_lng) <= MAX_KM_FROM_CITY:
-                    kept.append(p)
-                else:
-                    dropped_outliers += 1
-        else:
-            kept.extend(city_places)
-
-    out_places = []
-    for p in sorted(kept, key=lambda x: (x.department, x.city, x.name)):
-        cat = CATEGORIES.get(p.category, CATEGORIES["cultural"])
-        description = p.description.strip() or (
-            f"{p.name}, {cat['label']} en {p.city}, {p.department}, Colombia."
-        )
-        out_places.append({
-            "name": p.name,
-            "slug": p.slug,
-            "description": description,
-            "shortDescription": (p.short_description or description)[:160],
-            "address": p.address.strip() or f"{p.city}, {p.department}, Colombia",
-            "city": p.city,
-            "department": p.department,
-            "country": p.country,
-            "latitude": p.latitude,
-            "longitude": p.longitude,
-            "mainImage": p.main_image,
-            "phone": p.phone,
-            "email": p.email,
-            "website": p.website,
-            "category": p.category,
-        })
-
+    counts = dict(sorted(((k, len(v)) for k, v in kept.items()), key=lambda kv: -kv[1]))
+    total_kept = sum(counts.values())
+    by_source = Counter(item["sourceType"] for items in kept.values() for item in items)
     return {
         "metadata": {
+            "source": "scraper de fuentes oficiales (alcaldías, gobernaciones, "
+                      "oficinas de turismo y datos.gov.co)",
             "generated_at": datetime.now(timezone.utc).isoformat(),
-            "total_places": len(out_places),
-            "cities": len({p["city"] for p in out_places}),
-            "departments": len({p["department"] for p in out_places}),
-            "dropped_no_coords": len(places) - len(valid),
-            "dropped_outliers": dropped_outliers,
+            "total_original": len(places),
+            "total_kept": total_kept,
+            "total_excluded": len(places) - total_kept,
+            "excluded_reasons": dict(excluded),
+            "sources": dict(by_source),
+            "categories": counts,
         },
-        "categories": [
-            {"name": c["name"], "slug": c["slug"], "icon": c["icon"], "key": key}
-            for key, c in CATEGORIES.items()
-        ],
-        "places": out_places,
+        "categories": {k: kept[k] for k in counts},
     }
 
 
 def export_prisma() -> Path:
-    """Escribe output/prisma/seed-data.json listo para consumir desde prisma/seed.ts."""
+    """Escribe output/prisma/places.json, listo para copiar a
+    backend-cityscout-2.0/prisma/data/places.json."""
     PRISMA_DIR.mkdir(parents=True, exist_ok=True)
     data = build_seed_data(get_all_places())
-    path = PRISMA_DIR / "seed-data.json"
+    path = PRISMA_DIR / "places.json"
     path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
     return path
 

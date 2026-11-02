@@ -68,7 +68,8 @@ async def test_export_places():
         name="Test Place",
         city="Bogotá",
         department="Cundinamarca",
-        category="monuments",
+        category="monumentos",
+        source_type="alcaldia",
     )
     save_place(place)
 
@@ -89,7 +90,8 @@ async def test_list_places_pagination():
             name=f"Place {i}",
             city="Bogotá" if i < 30 else "Medellín",
             department="Cundinamarca" if i < 30 else "Antioquia",
-            category="monuments",
+            category="monumentos",
+            source_type="alcaldia",
         )
         save_place(place)
 
@@ -109,8 +111,10 @@ async def test_list_places_filter_by_city():
     from backend.main import app
     from backend.database.models import Place, save_place
 
-    place1 = Place(name="Bogotá Place", city="Bogotá", department="Cundinamarca", category="monuments")
-    place2 = Place(name="Medellín Place", city="Medellín", department="Antioquia", category="nature")
+    place1 = Place(name="Bogotá Place", city="Bogotá", department="Cundinamarca",
+                   category="monumentos", source_type="alcaldia")
+    place2 = Place(name="Medellín Place", city="Medellín", department="Antioquia",
+                   category="parques", source_type="alcaldia")
     save_place(place1)
     save_place(place2)
 

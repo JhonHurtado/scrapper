@@ -42,7 +42,7 @@ export function StatsBar({ stats, connected, onStart, onPause, onStop, onExport 
       flexWrap: 'wrap',
     }}>
       <div style={{ fontWeight: 700, fontSize: 15, display: 'flex', alignItems: 'center', gap: 8, whiteSpace: 'nowrap' }}>
-        <span>🗺️</span> Colombia Tourist Scraper
+        <span>🏛️</span> Patrimonio de Colombia · fuentes oficiales
       </div>
 
       <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>

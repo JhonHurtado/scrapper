@@ -13,13 +13,17 @@ def setup_db_with_places(tmp_path, monkeypatch):
     from backend.database.models import Place, save_place
     close_db()
     init_db()
+    official = dict(source_type="alcaldia", source_entity="Alcaldía")
     save_place(Place(name="Plaza de Bolívar", city="Bogotá",
-                     department="Cundinamarca", category="monuments",
-                     description="Plaza histórica"))
+                     department="Cundinamarca", category="plazas",
+                     description="Plaza histórica", **official))
     save_place(Place(name="Cerro de Monserrate", city="Bogotá",
-                     department="Cundinamarca", category="viewpoints"))
-    save_place(Place(name="El Peñol", city="Guatapé",
-                     department="Antioquia", category="nature"))
+                     department="Cundinamarca", category="cerros_y_montanas", **official))
+    save_place(Place(name="Piedra del Peñol", city="Guatapé",
+                     department="Antioquia", category="cerros_y_montanas", **official))
+    # De la versión anterior (sin fuente oficial): no se exporta.
+    save_place(Place(name="Hotel Cualquiera", city="Bogotá",
+                     department="Cundinamarca", category="cultural"))
     yield tmp_path
     close_db()
 
@@ -50,3 +54,12 @@ def test_export_uses_camel_case_keys(setup_db_with_places):
     assert "shortDescription" in place
     assert "mainImage" in place
     assert "short_description" not in place
+
+
+def test_export_includes_source_and_verification(setup_db_with_places):
+    from backend.exporters.json_exporter import export_json
+    data = json.loads(export_json().read_text(encoding="utf-8"))
+    place = data["places"][0]
+    assert place["sourceType"] == "alcaldia"
+    assert "sourceEntity" in place and "verified" in place
+    assert data["metadata"]["verified_places"] == 0

@@ -108,7 +108,7 @@ export default function App() {
       case 'city_completed':
         setLogs(prev => [...prev.slice(-500), {
           level: 'info',
-          message: `✓ ${msg.city} → ${msg.placesCount} lugares (${msg.duplicatesSkipped} duplicados omitidos)`,
+          message: `✓ ${msg.city} → ${msg.placesCount} sitios patrimoniales (${msg.duplicatesSkipped} repetidos)`,
           timestamp: new Date().toISOString(),
         }])
         break
