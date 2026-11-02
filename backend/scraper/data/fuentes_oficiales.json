@@ -1,0 +1,127 @@
+{
+  "_descripcion": "Fuentes oficiales adicionales a los portales de alcaldías (que salen de municipios.json). Todas deben ser de entidades públicas: dominios *.gov.co o los listados en dominios_oficiales_adicionales. Los datasets se consultan en datos.gov.co (API Socrata).",
+
+  "dominios_oficiales_adicionales": [],
+
+  "_nota_paginas_turismo": "Portales u oficinas de turismo oficiales que no son la alcaldía ni la gobernación (que ya se recorren solas). 'tipo' = oficina_turismo | gobernacion | alcaldia. 'departamento' = código DANE de 2 dígitos; si se da 'dane' (5 dígitos) todo se atribuye a ese municipio; si no, cada ficha se asigna al municipio del departamento que mencione.",
+  "_ejemplo_pagina_turismo": {
+    "url": "https://www.ejemplo-departamento.gov.co/turismo",
+    "entidad": "Instituto Departamental de Turismo",
+    "tipo": "oficina_turismo",
+    "departamento": "15"
+  },
+  "paginas_turismo": [],
+
+  "datasets": [
+    {
+      "id": "q7e6-cjds",
+      "entidad": "Alcaldía de Guatavita (Cundinamarca)",
+      "dane": "25326",
+      "campos": {"nombre": "lugar", "descripcion": "descripcion", "direccion": "ubicaci_n"}
+    },
+    {
+      "id": "2fsd-7enq",
+      "entidad": "Gobernación del Atlántico",
+      "departamento": "08",
+      "campos": {
+        "nombre": "atractivo_turistico_o_producto",
+        "municipio": "municipio",
+        "descripcion": "descripcion",
+        "direccion": "lugar_de_ubicacion",
+        "tipo": "tipo_de_atractivo"
+      },
+      "tipos_permitidos": ["Natural", "Cultural", "Religioso"]
+    },
+    {
+      "id": "kz2v-yaia",
+      "entidad": "Gobernación del Guainía",
+      "departamento": "94",
+      "campos": {"nombre": "nobre_del_atarctivo", "descripcion": "descripci_n"}
+    },
+    {
+      "id": "tceq-3ger",
+      "entidad": "Gobernación de Casanare",
+      "departamento": "85",
+      "campos": {"nombre": "sitio", "municipio": "municipio", "coordenadas": "ubicaci_n"}
+    },
+    {
+      "id": "gh2d-89xq",
+      "entidad": "Alcaldía de Dosquebradas (Risaralda)",
+      "dane": "66170",
+      "campos": {
+        "nombre": "nombre_sitio",
+        "direccion": "direccion",
+        "tipo": "tipo_sitio",
+        "coordenadas": "georeferencia_1"
+      },
+      "tipos_permitidos": ["ATRACTIVO TURÍSTICO", "MUSEO"]
+    },
+    {
+      "id": "ic3a-dm3e",
+      "entidad": "Alcaldía de Santa Cruz de Lorica (Córdoba)",
+      "dane": "23417",
+      "inventario_patrimonio": true,
+      "campos": {
+        "nombre": "nombre",
+        "descripcion": "descripcion",
+        "direccion": "direccion",
+        "tipo": "tipo_de_patrimonio",
+        "propiedad": "tipo_propiedad",
+        "coordenadas": "georefenciacion"
+      }
+    },
+    {
+      "id": "583f-zefk",
+      "entidad": "Alcaldía de Suesca (Cundinamarca)",
+      "dane": "25772",
+      "campos": {
+        "nombre": "nombre_del_bien",
+        "descripcion": "descripci_n",
+        "direccion": "direcci_n",
+        "tipo": "tipo_de_patrimonio"
+      }
+    },
+    {
+      "id": "6zkz-uunt",
+      "entidad": "Gobernación de Risaralda — Inventario de Patrimonio Arquitectónico",
+      "departamento": "66",
+      "inventario_patrimonio": true,
+      "campos": {"nombre": "denominacion", "dane": "codigo_municipio", "tipo": "tipo_de_patrimonio"},
+      "tipos_excluidos": [
+        "EDUCATIVOS", "EDUCACION", "RESIDENCIAL Y/O COMERCIAL", "COMERCIAL-RESIDENCIAL",
+        "VIVIENDAS", "INDUSTRIA", "ASISTENCIAL", "RECREACIONAL (PUBLICO Y PRIVADO)"
+      ]
+    },
+    {
+      "id": "k2b5-jms2",
+      "entidad": "Alcaldía de Palmira (Valle del Cauca)",
+      "dane": "76520",
+      "inventario_patrimonio": true,
+      "campos": {
+        "nombre": "patrimonio_natural_y",
+        "tipo": "tipo_de_patrimonio",
+        "direccion": "ubicaci_n",
+        "coordenadas": "ubicaci_n"
+      },
+      "tipos_excluidos": ["Casas de Haciendas.", "Arboledas y vegetación notables", "Patrimonio Científico"]
+    },
+    {
+      "id": "6e4m-6mng",
+      "entidad": "Alcaldía de Ricaurte (Cundinamarca)",
+      "dane": "25612",
+      "campos": {
+        "nombre": "nombre_del_atractivo",
+        "descripcion": "descripci_n_breve",
+        "direccion": "ubicaci_n",
+        "tipo": "tipo_de_atractivo",
+        "coordenadas": "formato_google_maps"
+      },
+      "tipos_excluidos": [
+        "Alojamiento", "Gastronomía", "Centro Comercial", "Infraestructura Comercial",
+        "Festividad/Evento", "Evento Cultural (Fiesta Tradicional)", "AgroTurismo",
+        "Infraestructura Deportiva", "Patrimonio Cultural Inmaterial", "Sitio Natural (Abandonado)",
+        "Parque Recreativo"
+      ]
+    }
+  ]
+}

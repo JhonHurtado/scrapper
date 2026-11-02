@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from ..database.models import get_all_places
+from ..scraper.official.heritage import BACKEND_CATEGORIES
 from slugify import slugify
 
 OUTPUT_DIR = Path(__file__).parent.parent.parent / "output"
@@ -11,7 +12,8 @@ BY_CITY_DIR = OUTPUT_DIR / "by_city"
 
 
 def export_json() -> Path:
-    """Exporta todos los lugares a output/places.json y output/by_city/*.json."""
+    """Exporta todos los lugares de fuentes oficiales (verificados o no) a
+    output/places.json y output/by_city/*.json, con su fuente y verificación."""
     OUTPUT_DIR.mkdir(exist_ok=True)
     BY_CITY_DIR.mkdir(exist_ok=True)
 
@@ -47,8 +49,10 @@ def export_json() -> Path:
             "exported_at": _now(),
             "total_places": len(places_dicts),
             "cities_covered": len(by_city),
-            "categories": ["monuments", "nature", "viewpoints", "cultural"],
-            "scraper_version": "1.0.0",
+            "verified_places": sum(1 for p in places_dicts if p["verified"]),
+            "categories": sorted(BACKEND_CATEGORIES),
+            "sources": "alcaldías, gobernaciones, oficinas de turismo y datos.gov.co",
+            "scraper_version": "2.0.0",
         },
         "places": places_dicts,
     }

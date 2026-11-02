@@ -14,7 +14,18 @@ export interface Place {
   phone: string | null
   email: string | null
   website: string | null
-  category: 'monuments' | 'nature' | 'viewpoints' | 'cultural'
+  /** Categoría del backend (clave de prisma/data/places.json, p. ej. "iglesias") */
+  category: string
+  /** Página oficial (alcaldía, gobernación, oficina de turismo, datos.gov.co) */
+  sourceUrl: string | null
+  sourceEntity: string
+  sourceType: 'alcaldia' | 'gobernacion' | 'oficina_turismo' | 'datos_abiertos' | ''
+  evidenceUrl: string
+  daneCode: string
+  geoSource: 'fuente_oficial' | 'openstreetmap' | 'google_maps' | ''
+  geoDistanceKm: number | null
+  /** Fuente oficial + ubicación verificada dentro del municipio */
+  verified: boolean
 }
 
 export interface LogEntry {
@@ -33,7 +44,7 @@ export interface ScrapingStats {
   status: 'idle' | 'running' | 'paused' | 'completed'
 }
 
-// El backend emite camelCase (ver scrape_all en playwright_scraper.py)
+// El backend emite camelCase (ver scrape_all en official_scraper.py)
 export type WsMessage =
   | { type: 'connected'; session_id: string }
   | { type: 'log'; level: LogEntry['level']; message: string; timestamp: string }

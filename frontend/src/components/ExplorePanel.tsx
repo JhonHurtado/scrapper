@@ -3,7 +3,7 @@ import type { Place } from '../types'
 import { PlaceCard, CATEGORY_CONFIG, type CategoryKey } from './PlaceCard'
 
 const PAGE_SIZE = 120
-const CATS = Object.keys(CATEGORY_CONFIG) as CategoryKey[]
+const ALL_CATS = Object.keys(CATEGORY_CONFIG) as CategoryKey[]
 
 interface Props {
   places: Place[]
@@ -44,10 +44,17 @@ export function ExplorePanel({ places, loading }: Props) {
   )
 
   const catCounts = useMemo(() => {
-    const counts = { monuments: 0, nature: 0, viewpoints: 0, cultural: 0 }
+    const counts: Record<string, number> = {}
     for (const p of base) counts[p.category] = (counts[p.category] ?? 0) + 1
     return counts
   }, [base])
+
+  // Solo las categorías presentes (el backend tiene 20), de mayor a menor.
+  const CATS = useMemo(
+    () => ALL_CATS.filter(k => (catCounts[k] ?? 0) > 0 || k === cat)
+      .sort((a, b) => (catCounts[b] ?? 0) - (catCounts[a] ?? 0)),
+    [catCounts, cat],
+  )
 
   // Segundo gráfico: departamentos, o ciudades si ya hay departamento elegido
   const regionRows = useMemo(() => {
@@ -76,7 +83,7 @@ export function ExplorePanel({ places, loading }: Props) {
           {filtered.length.toLocaleString('es-CO')}
         </span>
         <span style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
-          lugares turísticos · {filteredCities} ciudades · {filteredDepts} departamentos
+          sitios patrimoniales · {filteredCities} municipios · {filteredDepts} departamentos
         </span>
         {loading && <span style={{ fontSize: 11, color: 'var(--text-dim)' }}>⟳ cargando…</span>}
         {hasFilters && (
@@ -137,7 +144,7 @@ export function ExplorePanel({ places, loading }: Props) {
               <span style={{ width: 8, height: 8, borderRadius: 2, background: c.color }} />
               {c.emoji} {c.label}
               <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--text-dim)' }}>
-                {catCounts[key]}
+                {catCounts[key] ?? 0}
               </span>
             </button>
           )
@@ -151,7 +158,7 @@ export function ExplorePanel({ places, loading }: Props) {
           rows={CATS.map(key => ({
             label: CATEGORY_CONFIG[key].label,
             icon: CATEGORY_CONFIG[key].emoji,
-            value: catCounts[key],
+            value: catCounts[key] ?? 0,
             color: CATEGORY_CONFIG[key].color,
           }))}
         />

@@ -3,50 +3,56 @@ from backend.database.models import Place
 from backend.exporters.prisma_exporter import build_seed_data
 
 
-def _place(name, city="Bogotá", lat=4.60, lng=-74.08, **kw):
-    return Place(name=name, city=city, department="Cundinamarca",
-                 category="monuments", latitude=lat, longitude=lng, **kw)
+def _place(name, category="iglesias", lat=5.6325, lng=-73.5249, **kw):
+    defaults = dict(city="Villa de Leyva", department="Boyacá", dane_code="15407",
+                    source_type="alcaldia", source_entity="Alcaldía de Villa de Leyva (Boyacá)",
+                    source_url="https://www.villadeleyva-boyaca.gov.co/MiMunicipio/Paginas/Sitios-de-Interes.aspx",
+                    verified=lat is not None, geo_source="openstreetmap", geo_distance_km=0.1)
+    defaults.update(kw)
+    return Place(name=name, category=category, latitude=lat, longitude=lng, **defaults)
 
 
-def test_drops_places_without_coords():
-    data = build_seed_data([_place("A"), _place("B", lat=None, lng=None)])
-    assert data["metadata"]["dropped_no_coords"] == 1
-    assert [p["name"] for p in data["places"]] == ["A"]
+def test_output_matches_backend_seed_format():
+    data = build_seed_data([_place("Iglesia Nuestra Señora del Rosario"),
+                            _place("Casa Museo Antonio Nariño", category="museos")])
+    assert set(data) == {"metadata", "categories"}
+    assert data["metadata"]["total_kept"] == 2
+    assert set(data["categories"]) == {"iglesias", "museos"}
+    lugar = data["categories"]["museos"][0]
+    # Campos que lee backend-cityscout-2.0/prisma/seed-places.ts (LugarOrigen)
+    for key in ("name", "slug", "description", "shortDescription", "address", "city",
+                "department", "country", "latitude", "longitude", "mainImage",
+                "phone", "email", "website"):
+        assert key in lugar
+    assert lugar["sourceUrl"].startswith("https://www.villadeleyva-boyaca.gov.co")
+    assert lugar["sourceEntity"] == "Alcaldía de Villa de Leyva (Boyacá)"
 
 
-def test_drops_outliers_far_from_city_median():
+def test_only_official_and_verified_places_are_exported():
     places = [
-        _place("A", lat=4.60, lng=-74.08),
-        _place("B", lat=4.61, lng=-74.07),
-        _place("C", lat=4.59, lng=-74.09),
-        _place("Lejano", lat=11.0, lng=-74.8),  # Barranquilla, etiquetado Bogotá
+        _place("Plaza Mayor", category="plazas"),
+        _place("Molino de la Primavera", category="sitios_culturales", lat=None, lng=None),
+        _place("Restaurante X", category="cultural", source_type=""),
     ]
     data = build_seed_data(places)
-    names = [p["name"] for p in data["places"]]
-    assert "Lejano" not in names
-    assert data["metadata"]["dropped_outliers"] == 1
+    assert data["metadata"]["total_kept"] == 1
+    assert data["metadata"]["excluded_reasons"] == {
+        "sin_ubicacion_verificada": 1, "sin_fuente_oficial": 1,
+    }
 
 
 def test_drops_coords_outside_colombia():
-    data = build_seed_data([_place("CostaRica", lat=10.9, lng=-84.75)])
-    assert data["places"] == []
+    data = build_seed_data([_place("Iglesia Lejana", lat=10.9, lng=-84.75)])
+    assert data["categories"] == {}
+    assert data["metadata"]["excluded_reasons"] == {"fuera_de_colombia": 1}
 
 
-def test_description_and_address_never_empty():
-    data = build_seed_data([_place("Plaza Mayor")])
-    p = data["places"][0]
-    assert p["description"]
-    assert "Plaza Mayor" in p["description"]
-    assert p["address"] == "Bogotá, Cundinamarca, Colombia"
-    assert p["shortDescription"]
+def test_excluded_categories_never_exported():
+    data = build_seed_data([_place("Termales del Ruiz", category="termales")])
+    assert data["metadata"]["total_kept"] == 0
 
 
-def test_excludes_non_sites_by_name():
-    data = build_seed_data([_place("Agencia de Turismo Ecoaventur"), _place("Plaza Mayor")])
-    assert [p["name"] for p in data["places"]] == ["Plaza Mayor"]
-
-
-def test_categories_included():
-    data = build_seed_data([])
-    slugs = {c["slug"] for c in data["categories"]}
-    assert slugs == {"monumentos", "naturaleza", "miradores", "cultura"}
+def test_empty_description_is_left_for_backend_fallback():
+    lugar = build_seed_data([_place("Plaza Mayor", category="plazas")])["categories"]["plazas"][0]
+    assert lugar["description"] is None
+    assert lugar["address"] is None

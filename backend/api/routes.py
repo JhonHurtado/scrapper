@@ -9,10 +9,11 @@ from fastapi.responses import FileResponse
 
 from ..config import config
 from ..database.models import (
-    count_places, get_all_places, get_places_by_city,
-    get_city_progress, reset_city_progress,
+    count_legacy_places, count_places, get_all_places, get_places_by_city,
+    get_city_progress, purge_legacy_places, reset_city_progress,
 )
 from ..exporters.json_exporter import export_json
+from ..exporters.prisma_exporter import export_prisma
 from .websocket import manager
 
 logger = logging.getLogger(__name__)
@@ -121,7 +122,7 @@ class LoopSafeManager:
 
 def _scrape_in_proactor_thread(proxy: "LoopSafeManager"):
     """Corre el scraper en un loop Proactor propio (solo Windows)."""
-    from ..scraper.playwright_scraper import scrape_all
+    from ..scraper.official_scraper import scrape_all
     loop = asyncio.ProactorEventLoop() if sys.platform == "win32" else asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
     try:
@@ -131,7 +132,7 @@ def _scrape_in_proactor_thread(proxy: "LoopSafeManager"):
 
 
 async def _run_scrape():
-    from ..scraper.playwright_scraper import scrape_all
+    from ..scraper.official_scraper import scrape_all
     try:
         if _loop_supports_playwright():
             await scrape_all(manager, state)
@@ -180,6 +181,8 @@ async def scrape_status():
         "citiesDone": state.cities_done,
         "citiesTotal": state.cities_total,
         "placesCount": count_places(),
+        "verifiedCount": count_places(verified_only=True),
+        "legacyCount": count_legacy_places(),
         "errors": state.errors,
     }
 
@@ -204,6 +207,28 @@ async def export_places():
     except Exception as e:
         logger.error(f"Export failed: {e}")
         raise HTTPException(status_code=500, detail=f"Export failed: {str(e)}")
+
+
+@router.get("/export/backend")
+async def export_backend():
+    """places.json con el formato de backend-cityscout-2.0/prisma/data/places.json
+    (solo sitios con fuente oficial y ubicación verificada)."""
+    try:
+        path = export_prisma()
+        return FileResponse(path=str(path), filename="places.json",
+                            media_type="application/json")
+    except Exception as e:
+        logger.error(f"Export failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Export failed: {str(e)}")
+
+
+@router.post("/places/purge-legacy")
+async def purge_legacy():
+    """Borra los lugares de la versión anterior (búsquedas en Google Maps sin
+    fuente oficial)."""
+    if state.running:
+        raise HTTPException(status_code=409, detail="Cannot purge while scraping is running")
+    return {"deleted": purge_legacy_places()}
 
 
 @router.get("/places")

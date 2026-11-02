@@ -18,7 +18,8 @@ def tmp_db(tmp_path, monkeypatch):
 
 def test_save_and_retrieve_place(tmp_db):
     from backend.database.models import Place, save_place, get_all_places
-    p = Place(name="Plaza de Bolívar", city="Bogotá", department="Cundinamarca", category="monuments")
+    p = Place(name="Plaza de Bolívar", city="Bogotá", department="Cundinamarca",
+              category="plazas", source_type="alcaldia")
     assert save_place(p) is True
     places = get_all_places()
     assert len(places) == 1
@@ -54,14 +55,17 @@ def test_short_description_auto_generated(tmp_db):
 def test_count_places(tmp_db):
     from backend.database.models import Place, save_place, count_places
     assert count_places() == 0
-    save_place(Place(name="Lugar A", city="Bogotá", department="Cundinamarca", category="nature"))
+    save_place(Place(name="Lugar A", city="Bogotá", department="Cundinamarca",
+                     category="parques", source_type="alcaldia"))
     assert count_places() == 1
 
 
 def test_get_places_by_city(tmp_db):
     from backend.database.models import Place, save_place, get_places_by_city
-    save_place(Place(name="Lugar A", city="Bogotá", department="Cundinamarca", category="nature"))
-    save_place(Place(name="Lugar B", city="Medellín", department="Antioquia", category="cultural"))
+    save_place(Place(name="Lugar A", city="Bogotá", department="Cundinamarca",
+                     category="parques", source_type="alcaldia"))
+    save_place(Place(name="Lugar B", city="Medellín", department="Antioquia",
+                     category="museos", source_type="alcaldia"))
     bogota = get_places_by_city("bogota")
     assert len(bogota) == 1
     assert bogota[0].city == "Bogotá"
@@ -69,64 +73,36 @@ def test_get_places_by_city(tmp_db):
 
 def test_city_progress_flow(tmp_db):
     from backend.database.models import init_city_progress, get_pending_cities, mark_city_complete
-    cities = [{"name": "Bogotá", "department": "Cundinamarca"},
-              {"name": "Medellín", "department": "Antioquia"}]
+    cities = [{"dane": "11001", "name": "Bogotá", "department": "Cundinamarca"},
+              {"dane": "05001", "name": "Medellín", "department": "Antioquia"}]
     init_city_progress(cities)
     pending = get_pending_cities()
     assert len(pending) == 2
-    mark_city_complete("Bogotá", "Cundinamarca", 15)
+    mark_city_complete("11001", 15)
     pending_after = get_pending_cities()
-    assert len(pending_after) == 1
-    assert pending_after[0]["name"] == "Medellín"
-
-
-def test_extract_coords_from_url():
-    from backend.scraper.playwright_scraper import _extract_coords
-    url = "https://www.google.com/maps/place/Plaza/@4.5981,-74.0759,17z/data=..."
-    lat, lng = _extract_coords(url)
-    assert lat == 4.5981
-    assert lng == -74.0759
-
-
-def test_extract_coords_missing():
-    from backend.scraper.playwright_scraper import _extract_coords
-    lat, lng = _extract_coords("https://www.google.com/maps/search/bogota")
-    assert lat is None
-    assert lng is None
+    assert pending_after == [{"dane": "05001", "name": "Medellín", "department": "Antioquia"}]
 
 
 def test_extract_place_coords_from_href():
-    from backend.scraper.playwright_scraper import _extract_place_coords
+    from backend.scraper.official.geocode import extract_place_coords
     href = ("https://www.google.com/maps/place/Pozo+de+Donato/data="
             "!4m7!3m6!1s0xabc!8m2!3d5.5566297!4d-73.3610534!16s")
-    lat, lng = _extract_place_coords(href)
+    lat, lng = extract_place_coords(href)
     assert lat == 5.5566297
     assert lng == -73.3610534
 
 
 def test_extract_place_coords_missing():
-    from backend.scraper.playwright_scraper import _extract_place_coords
-    assert _extract_place_coords("https://www.google.com/maps/place/x") == (None, None)
+    from backend.scraper.official.geocode import extract_place_coords
+    assert extract_place_coords("https://www.google.com/maps/place/x") == (None, None)
 
 
 def test_extract_google_place_id():
-    from backend.scraper.playwright_scraper import _extract_google_place_id
+    from backend.scraper.official.geocode import extract_google_place_id
     href = ("https://www.google.com/maps/place/Mirador/data="
             "!4m7!3m6!1s0x8e47659cd1ce58cb:0xaf820e9563eab5b2!8m2!3d5.04!4d-75.51")
-    assert _extract_google_place_id(href) == "0x8e47659cd1ce58cb:0xaf820e9563eab5b2"
-    assert _extract_google_place_id("https://www.google.com/maps/place/x") is None
-
-
-def test_map_category_by_type_label():
-    from backend.scraper.playwright_scraper import _map_category
-    assert _map_category("Mirador", "cultural") == "viewpoints"
-    assert _map_category("Iglesia católica", "nature") == "monuments"
-    assert _map_category("Parque nacional", "monuments") == "nature"
-    assert _map_category("Cascada", "cultural") == "nature"
-    assert _map_category("Museo de historia", "nature") == "cultural"
-    # sin match o vacío -> categoría de la búsqueda
-    assert _map_category("Atracción turística", "nature") == "nature"
-    assert _map_category("", "monuments") == "monuments"
+    assert extract_google_place_id(href) == "0x8e47659cd1ce58cb:0xaf820e9563eab5b2"
+    assert extract_google_place_id("https://www.google.com/maps/place/x") is None
 
 
 def test_place_key_defaults_to_coords_then_slug():
@@ -149,6 +125,78 @@ def test_save_place_dedupes_by_place_key(tmp_db):
 
 
 def test_clean_text_strips_icon_glyphs():
-    from backend.scraper.playwright_scraper import _clean_text
-    assert _clean_text("Cra. 2a #Cl. 18, Bogotá") == "Cra. 2a #Cl. 18, Bogotá"
-    assert _clean_text(None) == ""
+    from backend.scraper.official.geocode import clean_text
+    assert clean_text("\ue0c8Cra. 2a #Cl. 18, Bogotá") == "Cra. 2a #Cl. 18, Bogotá"
+    assert clean_text(None) == ""
+
+
+def test_place_key_uses_dane_code_and_name():
+    from backend.database.models import Place
+    p = Place(name="Iglesia de San Francisco", city="Popayán", department="Cauca",
+              category="iglesias", dane_code="19001", latitude=2.44, longitude=-76.6)
+    assert p.place_key == "19001:iglesia-de-san-francisco"
+
+
+def test_legacy_places_are_hidden_and_purgeable(tmp_db):
+    from backend.database.models import (Place, count_legacy_places, count_places,
+                                         get_all_places, purge_legacy_places, save_place)
+    save_place(Place(name="Restaurante Google", city="Bogotá", department="Cundinamarca",
+                     category="cultural"))  # versión anterior: sin fuente oficial
+    save_place(Place(name="Museo del Oro", city="Bogotá", department="Cundinamarca",
+                     category="museos", source_type="alcaldia", dane_code="11001"))
+    assert [p.name for p in get_all_places()] == ["Museo del Oro"]
+    assert count_places() == 1
+    assert count_legacy_places() == 1
+    assert len(get_all_places(include_legacy=True)) == 2
+    assert purge_legacy_places() == 1
+    assert count_legacy_places() == 0
+
+
+def test_duplicate_fills_missing_location(tmp_db):
+    from backend.database.models import Place, get_all_places, save_place
+    first = Place(name="Puente de Occidente", city="Santa Fe de Antioquia",
+                  department="Antioquia", category="puentes", dane_code="05042",
+                  source_type="alcaldia")
+    second = Place(name="Puente de Occidente", city="Santa Fe de Antioquia",
+                   department="Antioquia", category="puentes", dane_code="05042",
+                   source_type="datos_abiertos", latitude=6.5786, longitude=-75.8027,
+                   geo_source="fuente_oficial", verified=True)
+    assert save_place(first) is True
+    assert save_place(second) is False
+    [stored] = get_all_places()
+    assert stored.latitude == 6.5786 and stored.verified is True
+    assert stored.source_type == "alcaldia"  # la primera fuente se conserva
+
+
+def test_init_db_migrates_previous_version(tmp_path, monkeypatch):
+    """Una data.db de la versión anterior (Google Maps) se migra sin perder datos."""
+    import sqlite3
+    from backend.config import config
+    from backend.database.db import close_db, init_db
+    db_file = tmp_path / "old.db"
+    old = sqlite3.connect(db_file)
+    old.executescript("""
+        CREATE TABLE places (id TEXT PRIMARY KEY, name TEXT NOT NULL, slug TEXT UNIQUE NOT NULL,
+            description TEXT NOT NULL DEFAULT '', short_description TEXT,
+            address TEXT NOT NULL DEFAULT '', city TEXT NOT NULL, city_slug TEXT,
+            department TEXT NOT NULL, country TEXT NOT NULL DEFAULT 'Colombia',
+            latitude REAL, longitude REAL, main_image TEXT, phone TEXT, email TEXT,
+            website TEXT, category TEXT NOT NULL, scraped_at TEXT NOT NULL, source_url TEXT);
+        CREATE TABLE city_progress (city_slug TEXT PRIMARY KEY, city_name TEXT NOT NULL,
+            department TEXT NOT NULL, status TEXT DEFAULT 'pending',
+            places_found INTEGER DEFAULT 0, completed_at TEXT);
+        INSERT INTO places (id, name, slug, city, department, category, scraped_at)
+            VALUES ('1', 'Mirador X', 'mirador-x-bogota', 'Bogotá', 'Cundinamarca',
+                    'viewpoints', '2026-01-01');
+        INSERT INTO city_progress (city_slug, city_name, department) VALUES ('bogota', 'Bogotá', 'Cundinamarca');
+    """)
+    old.commit()
+    old.close()
+
+    monkeypatch.setattr(config, "db_path", db_file)
+    close_db()
+    init_db()
+    from backend.database.models import count_legacy_places, count_places, get_pending_cities
+    assert count_legacy_places() == 1 and count_places() == 0
+    assert get_pending_cities() == []
+    close_db()
