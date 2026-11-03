@@ -32,6 +32,7 @@ import httpx
 from ...config import config
 from ...database.db import get_db
 from ..municipalities import Municipality, municipalities_of
+from .browser import choose_browser
 from .heritage import classify_name, normalize
 
 logger = logging.getLogger(__name__)
@@ -264,14 +265,25 @@ class _GoogleMaps:
             return True
         if self._failed:
             return False
+        choice = choose_browser()
+        if choice.note:
+            logger.warning(choice.note)
+        if not choice.enabled:
+            self._failed = True
+            return False
         try:
             from playwright.async_api import async_playwright
             self._pw = await async_playwright().start()
-            self._browser = await self._pw.chromium.launch(headless=config.headless)
+            launch = {"headless": config.headless}
+            if choice.executable:
+                # Brave/Chrome/Edge instalados: no hace falta descargar Chromium.
+                launch["executable_path"] = choice.executable
+            self._browser = await self._pw.chromium.launch(**launch)
             self._context = await self._browser.new_context(locale="es-CO")
+            logger.info("Respaldo de Google Maps con %s", choice.label)
             return True
         except Exception as e:
-            logger.warning("Google Maps no disponible como respaldo: %s", e)
+            logger.warning("Google Maps no disponible como respaldo (%s): %s", choice.label, e)
             self._failed = True
             return False
 
