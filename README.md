@@ -88,8 +88,10 @@ powershell -ExecutionPolicy Bypass -File run.ps1
 
 Ambos scripts hacen lo mismo:
 
-1. Create a Python virtual environment (`.venv`) and install deps if missing
-2. Install Playwright's Chromium browser if missing
+1. Crean el entorno virtual (`.venv`) si no existe e instalan las dependencias
+   de Python cada vez que cambia `requirements.txt`
+2. Buscan un navegador Chromium ya instalado (Brave, Chrome o Edge) para el
+   respaldo de Google Maps — no descargan ningún navegador (ver abajo)
 3. Run `npm install` in `frontend/` if missing
 4. Start the FastAPI backend on **http://localhost:8000**
 5. Start the Vite dev server on **http://localhost:5173** (opens browser)
@@ -110,10 +112,29 @@ source .venv/bin/activate
 # Windows (cmd):        python -m venv .venv && .venv\Scripts\activate.bat
 
 pip install -r requirements.txt
-python -m playwright install chromium
 
 uvicorn backend.main:app --reload
 ```
+
+### Navegador (Brave, Chrome, Edge)
+
+El scraping de fuentes oficiales no usa navegador: son peticiones HTTP a los
+portales `*.gov.co`. Solo el respaldo opcional de ubicación en Google Maps abre
+uno, y usa el que ya tengas instalado — en orden: **Brave**, Chrome, Edge,
+Chromium. No hace falta `playwright install`.
+
+```bash
+python -m backend.scraper.official.browser      # muestra cuál se va a usar
+SCRAPER_BROWSER=brave ./run.sh                  # forzar Brave
+SCRAPER_BROWSER_PATH="/Applications/Brave Browser.app/Contents/MacOS/Brave Browser" ./run.sh
+GEOCODER_GOOGLE_FALLBACK=false ./run.sh         # sin respaldo de Google Maps
+```
+
+> **Safari** no es posible: Playwright solo controla navegadores Chromium,
+> Firefox y su propio WebKit, no la aplicación Safari. Si pides
+> `SCRAPER_BROWSER=safari` se usa el primer navegador Chromium instalado.
+> Si no tienes ninguno, se puede descargar el de Playwright con
+> `python -m playwright install chromium`.
 
 > **Windows**: el backend fija la política Proactor de asyncio y, si el servidor
 > corre sobre un SelectorEventLoop, el scraper se ejecuta en un hilo con su
@@ -176,6 +197,8 @@ python -m backend.scraper.official_scraper --sin-gobernaciones --sin-google
 | `ONLY_DANE_CODES` | (todos) | Municipios a recorrer, separados por coma |
 | `INCLUDE_DEPARTMENTAL` | `true` | Recorrer portales de gobernaciones |
 | `GEOCODER_GOOGLE_FALLBACK` | `true` | Google Maps si OpenStreetMap no ubica el sitio |
+| `SCRAPER_BROWSER` | `auto` | `auto`, `brave`, `chrome`, `edge`, `chromium`, `playwright` o `none` |
+| `SCRAPER_BROWSER_PATH` | — | Ruta exacta del ejecutable del navegador |
 | `GEO_MAX_KM` / `GEO_MAX_KM_LARGE` | `40` / `150` | Radio máximo desde la cabecera municipal |
 | `GEO_MIN_NAME_SIMILARITY` | `0.6` | Coincidencia mínima de nombre al geocodificar |
 | `HTTP_HOST_DELAY_SECONDS` | `0.8` | Pausa entre peticiones a un mismo portal |

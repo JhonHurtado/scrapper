@@ -51,6 +51,11 @@ NOMINATIM_URL = os.getenv("NOMINATIM_URL", "https://nominatim.openstreetmap.org/
 NOMINATIM_DELAY_SECONDS = float(os.getenv("NOMINATIM_DELAY_SECONDS", "1.1"))
 # Si OpenStreetMap no ubica el sitio, intentar con Google Maps (Playwright).
 GEOCODER_GOOGLE_FALLBACK = _bool("GEOCODER_GOOGLE_FALLBACK", "true")
+# Navegador para ese respaldo: auto | brave | chrome | edge | chromium |
+# playwright | none. "auto" usa el primero instalado (Brave primero), así no
+# hace falta descargar el Chromium de Playwright. SCRAPER_BROWSER_PATH fija la ruta.
+BROWSER = os.getenv("SCRAPER_BROWSER", "auto")
+BROWSER_PATH = os.getenv("SCRAPER_BROWSER_PATH", "")
 # Similitud mínima (0-1) entre el nombre oficial y el que devuelve el geocoder.
 GEO_MIN_NAME_SIMILARITY = float(os.getenv("GEO_MIN_NAME_SIMILARITY", "0.6"))
 
@@ -83,6 +88,8 @@ class Config:
     nominatim_url: str = NOMINATIM_URL
     nominatim_delay: float = NOMINATIM_DELAY_SECONDS
     geocoder_google_fallback: bool = GEOCODER_GOOGLE_FALLBACK
+    browser: str = BROWSER
+    browser_path: str = BROWSER_PATH
     geo_min_name_similarity: float = GEO_MIN_NAME_SIMILARITY
     include_departmental: bool = INCLUDE_DEPARTMENTAL
     only_dane_codes: tuple = tuple(ONLY_DANE_CODES)

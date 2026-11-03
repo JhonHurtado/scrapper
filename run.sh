@@ -25,20 +25,37 @@ trap cleanup EXIT INT TERM
 
 # ── Python venv ──────────────────────────────────────────────────────────────
 VENV="$ROOT/.venv"
-if [[ ! -d "$VENV" ]]; then
-    warn "Virtual env not found — creating .venv and installing dependencies…"
+if [[ ! -x "$VENV/bin/python" ]]; then
+    warn "Virtual env not found — creating .venv…"
     python3 -m venv "$VENV"
-    "$VENV/bin/pip" install -q -r "$ROOT/requirements.txt"
-    ok "Python deps installed."
 fi
 PYTHON="$VENV/bin/python"
 UVICORN="$VENV/bin/uvicorn"
 
-# ── Playwright browsers ──────────────────────────────────────────────────────
-if [[ ! -d "$HOME/.cache/ms-playwright" && ! -d "$HOME/Library/Caches/ms-playwright" ]]; then
-    warn "Playwright browsers not found — installing Chromium (takes ~1 min)…"
-    "$PYTHON" -m playwright install chromium
-    ok "Chromium installed."
+# Reinstala dependencias cuando cambia requirements.txt (o si la instalación
+# anterior quedó a medias): un .venv viejo no trae los paquetes nuevos.
+REQ_STAMP="$VENV/.requirements.sha"
+REQ_HASH="$("$PYTHON" -c 'import hashlib,sys; print(hashlib.sha256(open(sys.argv[1],"rb").read()).hexdigest())' "$ROOT/requirements.txt")"
+if [[ ! -f "$REQ_STAMP" || "$(cat "$REQ_STAMP")" != "$REQ_HASH" ]]; then
+    warn "Installing Python dependencies…"
+    "$PYTHON" -m pip install -q --upgrade pip
+    "$PYTHON" -m pip install -q -r "$ROOT/requirements.txt"
+    echo "$REQ_HASH" > "$REQ_STAMP"
+    ok "Python deps installed."
+fi
+
+# ── Navegador (solo para el respaldo de Google Maps) ─────────────────────────
+# Se usa el navegador Chromium que ya tengas (Brave, Chrome, Edge…); no se
+# descarga nada. Elige otro con SCRAPER_BROWSER o SCRAPER_BROWSER_PATH.
+if [[ "${GEOCODER_GOOGLE_FALLBACK:-true}" != "false" ]]; then
+    if BROWSER_EXE="$(cd "$ROOT" && "$PYTHON" -m backend.scraper.official.browser 2>/dev/null)" \
+            && [[ "$BROWSER_EXE" != "playwright" ]]; then
+        ok "Navegador para el respaldo de Google Maps: $BROWSER_EXE"
+    else
+        warn "No se encontró Brave, Chrome ni Edge: el respaldo de Google Maps no estará disponible."
+        warn "El scraping de fuentes oficiales funciona igual. Para activarlo instala Brave o Chrome,"
+        warn "o descarga Chromium con: $PYTHON -m playwright install chromium"
+    fi
 fi
 
 # ── Node deps ────────────────────────────────────────────────────────────────
